@@ -1,0 +1,17 @@
+export default {
+  primary: '#6366F1',
+  primaryLight: '#818CF8',
+  primaryDark: '#4F46E5',
+  secondary: '#F3F4F6',
+  background: '#FFFFFF',
+  backgroundSecondary: '#F9FAFB',
+  text: '#111827',
+  textLight: '#6B7280',
+  textSecondary: '#9CA3AF',
+  border: '#E5E7EB',
+  success: '#10B981',
+  error: '#EF4444',
+  warning: '#F59E0B',
+  white: '#FFFFFF',
+  gradient: ['#6366F1', '#818CF8'],
+};

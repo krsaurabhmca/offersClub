@@ -1,7 +1,11 @@
+import {
+  Ionicons,
+  MaterialIcons
+} from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import * as Location from 'expo-location';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -23,14 +27,15 @@ import {
 const { width, height } = Dimensions.get('window');
 
 export default function NearbyMerchantsScreen() {
+  const params = useLocalSearchParams();
   const [merchants, setMerchants] = useState([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [currentLocation, setCurrentLocation] = useState(null);
-  const [radius, setRadius] = useState(10000); // Default 10km
+  const [radius, setRadius] = useState(5000); // Default 5km
   const [locationLoading, setLocationLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('ALL');
+  const [selectedCategory, setSelectedCategory] = useState(params.categoryId || 'ALL');
   const [showRadiusModal, setShowRadiusModal] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
@@ -38,6 +43,13 @@ export default function NearbyMerchantsScreen() {
     checkLoginStatus();
     requestLocationPermission();
   }, []);
+
+  useEffect(() => {
+    // If coming from category selection, update the filter
+    if (params.categoryId) {
+      setSelectedCategory(params.categoryId);
+    }
+  }, [params.categoryId]);
 
   const checkLoginStatus = async () => {
     try {
@@ -52,7 +64,6 @@ export default function NearbyMerchantsScreen() {
     try {
       setLocationLoading(true);
       
-      // Request permission
       let { status } = await Location.requestForegroundPermissionsAsync();
       
       if (status !== 'granted') {
@@ -61,6 +72,7 @@ export default function NearbyMerchantsScreen() {
           'Please enable location access to find nearby merchants.',
           [
             { text: 'Cancel', style: 'cancel' },
+            { text: 'Settings', onPress: () => Linking.openSettings() },
             { text: 'Manual Entry', onPress: showManualLocationInput }
           ]
         );
@@ -68,9 +80,9 @@ export default function NearbyMerchantsScreen() {
         return;
       }
 
-      // Get current location
       const location = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
+        timeout: 15000,
       });
 
       const coords = {
@@ -79,15 +91,14 @@ export default function NearbyMerchantsScreen() {
       };
 
       setCurrentLocation(coords);
-      
-      // Fetch nearby merchants with current location
       await fetchNearbyMerchants(coords.latitude, coords.longitude, radius);
       
     } catch (error) {
       console.error('Error getting location:', error);
+      setLocationLoading(false);
       Alert.alert(
         'Location Error',
-        'Unable to get your current location. Please enable GPS and try again.',
+        'Unable to get your current location. Please try again or enter manually.',
         [
           { text: 'Retry', onPress: requestLocationPermission },
           { text: 'Manual Entry', onPress: showManualLocationInput }
@@ -101,23 +112,27 @@ export default function NearbyMerchantsScreen() {
   const showManualLocationInput = () => {
     Alert.prompt(
       'Enter Location',
-      'Enter latitude and longitude separated by comma (e.g., 22.5726, 88.3639)',
+      'Enter latitude and longitude separated by comma\n(e.g., 22.5726, 88.3639)',
       [
         { text: 'Cancel', style: 'cancel' },
         { 
           text: 'Search', 
           onPress: (text) => {
             try {
+              if (!text || !text.trim()) return;
+              
               const [lat, lng] = text.split(',').map(coord => parseFloat(coord.trim()));
-              if (!isNaN(lat) && !isNaN(lng)) {
-                const coords = { latitude: lat, longitude: lng };
-                setCurrentLocation(coords);
-                fetchNearbyMerchants(lat, lng, radius);
-              } else {
-                Alert.alert('Error', 'Invalid coordinates format');
+              
+              if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+                Alert.alert('Error', 'Please enter valid coordinates\nLatitude: -90 to 90\nLongitude: -180 to 180');
+                return;
               }
+              
+              const coords = { latitude: lat, longitude: lng };
+              setCurrentLocation(coords);
+              fetchNearbyMerchants(lat, lng, radius);
             } catch (error) {
-              Alert.alert('Error', 'Invalid coordinates format');
+              Alert.alert('Error', 'Invalid coordinates format. Please use: lat, lng');
             }
           }
         }
@@ -130,34 +145,61 @@ export default function NearbyMerchantsScreen() {
   const fetchNearbyMerchants = async (lat, lng, radiusInMeters) => {
     try {
       setLoading(true);
-      console.log('Fetching merchants for:', { lat, lng, radius: radiusInMeters });
+      
+      const requestData = {
+        lat: parseFloat(lat).toFixed(6),
+        lng: parseFloat(lng).toFixed(6),
+        radius: parseInt(radiusInMeters)
+      };
+      
+      console.log('Fetching merchants with params:', requestData);
 
       const response = await axios.post(
         'https://offersclub.offerplant.com/opex/api.php?task=near_by_marchent',
+        requestData,
         {
-          lat: lat.toString(),
-          lng: lng.toString(),
-          radius: radiusInMeters
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          timeout: 15000
         }
       );
 
-      console.log('Merchants response:', response.data);
+      console.log('API Response:', response.data);
 
-      if (response.data.status === 'success') {
+      if (response.data && response.data.status === 'success') {
         const merchantsData = response.data.data || [];
-        // Sort by distance (closest first)
-        const sortedMerchants = merchantsData.sort((a, b) => 
-          parseFloat(a.distance_km) - parseFloat(b.distance_km)
-        );
-        setMerchants(sortedMerchants);
+        
+        // Filter by distance and sort
+        const filteredMerchants = merchantsData
+          .filter(merchant => {
+            const distance = parseFloat(merchant.distance_km) * 1000; // Convert to meters
+            return distance <= radiusInMeters;
+          })
+          .sort((a, b) => parseFloat(a.distance_km) - parseFloat(b.distance_km));
+        
+        setMerchants(filteredMerchants);
+        
+        if (filteredMerchants.length === 0) {
+          Alert.alert(
+            'No Merchants Found', 
+            `No merchants found within ${radiusInMeters < 1000 ? radiusInMeters + 'm' : (radiusInMeters/1000) + 'km'}. Try increasing the search radius.`
+          );
+        }
       } else {
-        Alert.alert('Info', 'No merchants found in your area');
+        console.log('API returned:', response.data);
         setMerchants([]);
+        Alert.alert('Info', response.data?.message || 'No merchants found in your area');
       }
     } catch (error) {
       console.error('Error fetching merchants:', error);
-      Alert.alert('Error', 'Unable to fetch nearby merchants. Please try again.');
       setMerchants([]);
+      
+      if (error.code === 'ECONNABORTED') {
+        Alert.alert('Timeout', 'Request took too long. Please check your internet connection and try again.');
+      } else {
+        Alert.alert('Error', 'Unable to fetch nearby merchants. Please check your internet connection and try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -168,11 +210,17 @@ export default function NearbyMerchantsScreen() {
       setRefreshing(true);
       await fetchNearbyMerchants(currentLocation.latitude, currentLocation.longitude, radius);
       setRefreshing(false);
+    } else {
+      await requestLocationPermission();
     }
   }, [currentLocation, radius]);
 
   const updateRadius = async (newRadius) => {
+    if (newRadius === radius) return;
+    
     setRadius(newRadius);
+    setShowRadiusModal(false);
+    
     if (currentLocation) {
       await fetchNearbyMerchants(currentLocation.latitude, currentLocation.longitude, newRadius);
     }
@@ -183,16 +231,18 @@ export default function NearbyMerchantsScreen() {
 
     // Filter by search query
     if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
       filtered = filtered.filter(merchant =>
-        merchant.business_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        merchant.contact_person.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        merchant.district.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        merchant.state.toLowerCase().includes(searchQuery.toLowerCase())
+        merchant.business_name?.toLowerCase().includes(query) ||
+        merchant.contact_person?.toLowerCase().includes(query) ||
+        merchant.district?.toLowerCase().includes(query) ||
+        merchant.state?.toLowerCase().includes(query) ||
+        merchant.address?.toLowerCase().includes(query)
       );
     }
 
-    // Filter by category (if categories are implemented)
-    if (selectedCategory !== 'ALL') {
+    // Filter by category
+    if (selectedCategory !== 'ALL' && selectedCategory) {
       filtered = filtered.filter(merchant => merchant.category_id === selectedCategory);
     }
 
@@ -201,17 +251,22 @@ export default function NearbyMerchantsScreen() {
 
   const getCategoryIcon = (categoryId) => {
     const icons = {
-      '1': '🏪', // General Store
-      '2': '🔌', // Electronics
-      '3': '📚', // Books/Education
-      '4': '🏥', // Medical/Pharmacy
-      '5': '🍽️', // Food/Restaurant
+      '1': 'restaurant-outline',     // Restaurants
+      '2': 'cart-outline',           // Groceries  
+      '3': 'laptop-outline',         // Electronics
+      '4': 'shirt-outline',          // Fashion
+      '5': 'medkit-outline',         // Pharmacy
+      '6': 'leaf-outline',           // Beauty & Wellness
+      '7': 'book-outline',           // Books & Stationery
+      '8': 'barbell-outline',        // Sports & Fitness
+      '9': 'airplane-outline',       // Travel & Tickets
+      '10': 'grid-outline',          // Others
     };
-    return icons[categoryId] || '🏪';
+    return icons[categoryId] || 'storefront-outline';
   };
 
   const formatDistance = (distanceKm) => {
-    const distance = parseFloat(distanceKm);
+    const distance = parseFloat(distanceKm || 0);
     if (distance < 1) {
       return `${Math.round(distance * 1000)}m`;
     }
@@ -219,9 +274,21 @@ export default function NearbyMerchantsScreen() {
   };
 
   const openInMaps = (latitude, longitude, businessName) => {
-    const scheme = Platform.select({ ios: 'maps:0,0?q=', android: 'geo:0,0?q=' });
-    const latLng = `${latitude},${longitude}`;
-    const label = businessName;
+    const lat = parseFloat(latitude);
+    const lng = parseFloat(longitude);
+    
+    if (isNaN(lat) || isNaN(lng)) {
+      Alert.alert('Error', 'Invalid location coordinates');
+      return;
+    }
+
+    const scheme = Platform.select({ 
+      ios: 'maps:0,0?q=', 
+      android: 'geo:0,0?q=' 
+    });
+    const latLng = `${lat},${lng}`;
+    const label = encodeURIComponent(businessName || 'Merchant Location');
+    
     const url = Platform.select({
       ios: `${scheme}${label}@${latLng}`,
       android: `${scheme}${latLng}(${label})`
@@ -229,8 +296,10 @@ export default function NearbyMerchantsScreen() {
 
     Linking.openURL(url).catch(() => {
       // Fallback to Google Maps web
-      const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}&query_place_id=${businessName}`;
-      Linking.openURL(googleMapsUrl);
+      const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}&query_place_id=${label}`;
+      Linking.openURL(googleMapsUrl).catch(() => {
+        Alert.alert('Error', 'Unable to open maps application');
+      });
     });
   };
 
@@ -248,47 +317,60 @@ export default function NearbyMerchantsScreen() {
       <View style={styles.cardHeader}>
         <View style={styles.merchantIconContainer}>
           <View style={styles.merchantIcon}>
-            <Text style={styles.merchantIconText}>
-              {getCategoryIcon(merchant.category_id)}
-            </Text>
+            <Ionicons 
+              name={getCategoryIcon(merchant.category_id)} 
+              size={24} 
+              color="#5f259f" 
+            />
           </View>
           <View style={styles.distanceBadge}>
+            <MaterialIcons name="location-on" size={12} color="#fff" />
             <Text style={styles.distanceText}>{formatDistance(merchant.distance_km)}</Text>
           </View>
         </View>
         
         <View style={styles.merchantInfo}>
           <Text style={styles.merchantName} numberOfLines={1}>
-            {merchant.business_name}
+            {merchant.business_name || 'Unknown Business'}
           </Text>
           <Text style={styles.contactPerson} numberOfLines={1}>
-            {merchant.contact_person}
+            <Ionicons name="person-outline" size={14} color="#6c757d" />
+            {' '}{merchant.contact_person || 'Contact Person'}
           </Text>
-          <Text style={styles.locationText} numberOfLines={1}>
-            {merchant.district}, {merchant.state}
+          <Text style={styles.locationText} numberOfLines={2}>
+            <Ionicons name="location-outline" size={12} color="#6c757d" />
+            {' '}{merchant.address ? `${merchant.address}, ` : ''}{merchant.district}, {merchant.state}
           </Text>
         </View>
 
         <TouchableOpacity 
-          style={styles.menuButton}
-          onPress={() => {/* Handle menu */}}
+          style={styles.favoriteButton}
+          onPress={() => {/* Handle favorite */}}
         >
-          <Text style={styles.menuButtonText}>⋮</Text>
+          <Ionicons name="heart-outline" size={20} color="#6c757d" />
         </TouchableOpacity>
       </View>
 
       <View style={styles.cardContent}>
         <View style={styles.infoRow}>
           <View style={styles.infoItem}>
-            <Text style={styles.infoLabel}>Phone</Text>
-            <TouchableOpacity onPress={() => Linking.openURL(`tel:${merchant.mobile}`)}>
-              <Text style={styles.infoValue}>{merchant.mobile}</Text>
-            </TouchableOpacity>
+            <Ionicons name="time-outline" size={16} color="#5f259f" />
+            <View style={styles.infoTextContainer}>
+              <Text style={styles.infoLabel}>Business Hours</Text>
+              <Text style={styles.infoValue}>
+                {merchant.business_hours || '9:00 AM - 9:00 PM'}
+              </Text>
+            </View>
           </View>
           
           <View style={styles.infoItem}>
-            <Text style={styles.infoLabel}>Wallet Balance</Text>
-            <Text style={styles.walletAmount}>₹{parseFloat(merchant.wallet).toFixed(2)}</Text>
+            <MaterialIcons name="category" size={16} color="#5f259f" />
+            <View style={styles.infoTextContainer}>
+              <Text style={styles.infoLabel}>Category</Text>
+              <Text style={styles.infoValue}>
+                {merchant.category_name || 'General Store'}
+              </Text>
+            </View>
           </View>
         </View>
 
@@ -297,7 +379,7 @@ export default function NearbyMerchantsScreen() {
             style={styles.actionButton}
             onPress={() => openInMaps(merchant.latitude, merchant.longitude, merchant.business_name)}
           >
-            <Text style={styles.actionIcon}>📍</Text>
+            <Ionicons name="location-outline" size={16} color="#5f259f" />
             <Text style={styles.actionText}>Directions</Text>
           </TouchableOpacity>
           
@@ -310,8 +392,8 @@ export default function NearbyMerchantsScreen() {
               });
             }}
           >
-            <Text style={styles.actionIcon}>👤</Text>
-            <Text style={styles.actionText}>Profile</Text>
+            <Ionicons name="information-circle-outline" size={16} color="#5f259f" />
+            <Text style={styles.actionText}>View Details</Text>
           </TouchableOpacity>
           
           <TouchableOpacity 
@@ -337,8 +419,8 @@ export default function NearbyMerchantsScreen() {
               }
             }}
           >
-            <Text style={styles.payIcon}>💳</Text>
-            <Text style={styles.payText}>Pay</Text>
+            <MaterialIcons name="payment" size={16} color="#fff" />
+            <Text style={styles.payText}>Claim Now</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -360,7 +442,7 @@ export default function NearbyMerchantsScreen() {
               style={styles.modalCloseButton}
               onPress={() => setShowRadiusModal(false)}
             >
-              <Text style={styles.modalCloseText}>✕</Text>
+              <Ionicons name="close" size={24} color="#6c757d" />
             </TouchableOpacity>
           </View>
           
@@ -370,14 +452,14 @@ export default function NearbyMerchantsScreen() {
             </Text>
             
             <View style={styles.radiusOptions}>
-              {[500, 1000, 2000, 5000, 10000, 20000, 50000].map((r) => (
+              {[500, 1000, 2000, 5000, 10000, 25000, 50000, 100000].map((r) => (
                 <TouchableOpacity
                   key={r}
                   style={[
                     styles.radiusOption,
                     radius === r && styles.radiusOptionActive
                   ]}
-                  onPress={() => setRadius(r)}
+                  onPress={() => updateRadius(r)}
                 >
                   <Text style={[
                     styles.radiusOptionText,
@@ -390,15 +472,14 @@ export default function NearbyMerchantsScreen() {
             </View>
           </View>
 
-          <TouchableOpacity 
-            style={styles.applyRadiusButton}
-            onPress={() => {
-              setShowRadiusModal(false);
-              updateRadius(radius);
-            }}
-          >
-            <Text style={styles.applyRadiusText}>Apply Changes</Text>
-          </TouchableOpacity>
+          <View style={styles.modalActions}>
+            <TouchableOpacity 
+              style={styles.cancelButton}
+              onPress={() => setShowRadiusModal(false)}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     </Modal>
@@ -406,20 +487,23 @@ export default function NearbyMerchantsScreen() {
 
   const EmptyState = () => (
     <View style={styles.emptyContainer}>
-      <Text style={styles.emptyIcon}>🔍</Text>
+      <Ionicons name="storefront-outline" size={64} color="#ccc" />
       <Text style={styles.emptyTitle}>No Merchants Found</Text>
       <Text style={styles.emptySubtitle}>
         {searchQuery 
-          ? 'Try adjusting your search terms'
-          : 'Try increasing your search radius'
+          ? `No results for "${searchQuery}". Try different keywords.`
+          : `No merchants found within ${radius < 1000 ? radius + 'm' : (radius/1000) + 'km'}`
         }
       </Text>
-      <TouchableOpacity 
-        style={styles.emptyActionButton}
-        onPress={() => setShowRadiusModal(true)}
-      >
-        <Text style={styles.emptyActionText}>Adjust Search Radius</Text>
-      </TouchableOpacity>
+      {!searchQuery && (
+        <TouchableOpacity 
+          style={styles.emptyActionButton}
+          onPress={() => setShowRadiusModal(true)}
+        >
+          <Ionicons name="resize-outline" size={16} color="#fff" />
+          <Text style={styles.emptyActionText}>Increase Search Radius</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 
@@ -433,10 +517,19 @@ export default function NearbyMerchantsScreen() {
           style={styles.backButton}
           onPress={() => router.back()}
         >
-          <Text style={styles.backIcon}>←</Text>
+          <Ionicons name="arrow-back" size={24} color="#5f259f" />
         </TouchableOpacity>
         
-        <Text style={styles.headerTitle}>Nearby Merchants</Text>
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerTitle}>
+            {params.categoryName ? `${params.categoryName} Merchants` : 'Nearby Merchants'}
+          </Text>
+          {currentLocation && (
+            <Text style={styles.headerSubtitle}>
+              {getFilteredMerchants().length} merchants found
+            </Text>
+          )}
+        </View>
         
         <TouchableOpacity 
           style={styles.headerAction}
@@ -446,7 +539,7 @@ export default function NearbyMerchantsScreen() {
           {locationLoading ? (
             <ActivityIndicator size="small" color="#5f259f" />
           ) : (
-            <Text style={styles.headerActionText}>📍</Text>
+            <Ionicons name="location" size={24} color="#5f259f" />
           )}
         </TouchableOpacity>
       </View>
@@ -454,10 +547,10 @@ export default function NearbyMerchantsScreen() {
       {/* Search and Filters */}
       <View style={styles.searchSection}>
         <View style={styles.searchContainer}>
-          <Text style={styles.searchIcon}>🔍</Text>
+          <Ionicons name="search" size={20} color="#6c757d" style={styles.searchIcon} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search merchants..."
+            placeholder="Search merchants, location..."
             placeholderTextColor="#999"
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -467,7 +560,7 @@ export default function NearbyMerchantsScreen() {
               style={styles.clearButton}
               onPress={() => setSearchQuery('')}
             >
-              <Text style={styles.clearButtonText}>✕</Text>
+              <Ionicons name="close-circle" size={20} color="#6c757d" />
             </TouchableOpacity>
           )}
         </View>
@@ -477,16 +570,18 @@ export default function NearbyMerchantsScreen() {
             style={styles.filterButton}
             onPress={() => setShowRadiusModal(true)}
           >
+            <Ionicons name="resize-outline" size={16} color="#5f259f" />
             <Text style={styles.filterText}>
               {radius < 1000 ? `${radius}m` : `${(radius / 1000).toFixed(1)}km`}
             </Text>
-            <Text style={styles.filterIcon}>▼</Text>
+            <Ionicons name="chevron-down" size={16} color="#5f259f" />
           </TouchableOpacity>
 
           {currentLocation && (
             <View style={styles.locationInfo}>
+              <Ionicons name="location" size={14} color="#00C851" />
               <Text style={styles.locationInfoText}>
-                📍 {getFilteredMerchants().length} merchants nearby
+                Location enabled
               </Text>
             </View>
           )}
@@ -516,7 +611,7 @@ export default function NearbyMerchantsScreen() {
         >
           {getFilteredMerchants().length > 0 ? (
             getFilteredMerchants().map((merchant) => (
-              <MerchantCard key={merchant.id} merchant={merchant} />
+              <MerchantCard key={merchant.id || merchant.qr_code} merchant={merchant} />
             ))
           ) : (
             <EmptyState />
@@ -545,34 +640,33 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
-    elevation: 2,
+    elevation: 3,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 2,
+    shadowRadius: 4,
   },
   backButton: {
     padding: 8,
     marginRight: 8,
   },
-  backIcon: {
-    fontSize: 24,
-    color: '#5f259f',
-    fontWeight: '600',
+  headerCenter: {
+    flex: 1,
+    alignItems: 'center',
   },
   headerTitle: {
-    flex: 1,
     fontSize: 18,
     fontWeight: '600',
     color: '#2c2c2c',
-    textAlign: 'center',
+  },
+  headerSubtitle: {
+    fontSize: 12,
+    color: '#6c757d',
+    marginTop: 2,
   },
   headerAction: {
     padding: 8,
     marginLeft: 8,
-  },
-  headerActionText: {
-    fontSize: 20,
   },
   searchSection: {
     backgroundColor: '#fff',
@@ -592,9 +686,7 @@ const styles = StyleSheet.create({
     borderColor: '#e9ecef',
   },
   searchIcon: {
-    fontSize: 16,
     marginRight: 8,
-    color: '#6c757d',
   },
   searchInput: {
     flex: 1,
@@ -604,10 +696,6 @@ const styles = StyleSheet.create({
   },
   clearButton: {
     padding: 4,
-  },
-  clearButtonText: {
-    fontSize: 16,
-    color: '#6c757d',
   },
   filtersRow: {
     flexDirection: 'row',
@@ -628,19 +716,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#5f259f',
     fontWeight: '500',
-    marginRight: 4,
-  },
-  filterIcon: {
-    fontSize: 10,
-    color: '#5f259f',
+    marginHorizontal: 4,
   },
   locationInfo: {
-    flex: 1,
-    alignItems: 'flex-end',
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   locationInfoText: {
     fontSize: 12,
-    color: '#6c757d',
+    color: '#00C851',
+    marginLeft: 4,
+    fontWeight: '500',
   },
   content: {
     flex: 1,
@@ -672,7 +758,7 @@ const styles = StyleSheet.create({
   },
   cardHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#f8f9fa',
@@ -689,10 +775,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
-    borderColor: '#5f259f',
-  },
-  merchantIconText: {
-    fontSize: 20,
+    borderColor: '#e9ecef',
   },
   distanceBadge: {
     position: 'absolute',
@@ -702,61 +785,66 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   distanceText: {
     fontSize: 10,
     color: '#fff',
     fontWeight: '600',
+    marginLeft: 2,
   },
   merchantInfo: {
     flex: 1,
+    paddingRight: 8,
   },
   merchantName: {
     fontSize: 16,
     fontWeight: '600',
     color: '#2c2c2c',
-    marginBottom: 2,
+    marginBottom: 4,
   },
   contactPerson: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#6c757d',
-    marginBottom: 2,
+    marginBottom: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   locationText: {
     fontSize: 12,
     color: '#6c757d',
+    lineHeight: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  menuButton: {
+  favoriteButton: {
     padding: 8,
-  },
-  menuButtonText: {
-    fontSize: 20,
-    color: '#6c757d',
   },
   cardContent: {
     padding: 16,
   },
   infoRow: {
-    flexDirection: 'row',
     marginBottom: 16,
   },
   infoItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  infoTextContainer: {
+    marginLeft: 8,
     flex: 1,
   },
   infoLabel: {
     fontSize: 12,
     color: '#6c757d',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   infoValue: {
-    fontSize: 14,
-    color: '#5f259f',
+    fontSize: 13,
+    color: '#2c2c2c',
     fontWeight: '500',
-  },
-  walletAmount: {
-    fontSize: 14,
-    color: '#28a745',
-    fontWeight: '600',
   },
   actionRow: {
     flexDirection: 'row',
@@ -774,42 +862,32 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e9ecef',
   },
-  actionIcon: {
-    fontSize: 14,
-    marginRight: 4,
-  },
   actionText: {
     fontSize: 12,
     color: '#5f259f',
     fontWeight: '500',
+    marginLeft: 4,
   },
   payButton: {
     backgroundColor: '#5f259f',
     borderColor: '#5f259f',
   },
-  payIcon: {
-    fontSize: 14,
-    marginRight: 4,
-  },
   payText: {
     fontSize: 12,
     color: '#fff',
     fontWeight: '600',
+    marginLeft: 4,
   },
   emptyContainer: {
     alignItems: 'center',
     paddingVertical: 60,
     paddingHorizontal: 32,
   },
-  emptyIcon: {
-    fontSize: 64,
-    marginBottom: 16,
-    opacity: 0.5,
-  },
   emptyTitle: {
     fontSize: 18,
     fontWeight: '600',
     color: '#2c2c2c',
+    marginTop: 16,
     marginBottom: 8,
     textAlign: 'center',
   },
@@ -821,8 +899,10 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   emptyActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: '#5f259f',
-    paddingHorizontal: 24,
+    paddingHorizontal: 20,
     paddingVertical: 12,
     borderRadius: 8,
   },
@@ -830,6 +910,7 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     fontWeight: '600',
+    marginLeft: 8,
   },
   modalOverlay: {
     flex: 1,
@@ -859,10 +940,6 @@ const styles = StyleSheet.create({
   modalCloseButton: {
     padding: 4,
   },
-  modalCloseText: {
-    fontSize: 18,
-    color: '#6c757d',
-  },
   radiusContainer: {
     padding: 20,
   },
@@ -879,7 +956,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   radiusOption: {
-    width: '30%',
+    width: '23%',
     paddingVertical: 12,
     paddingHorizontal: 8,
     borderRadius: 8,
@@ -901,15 +978,19 @@ const styles = StyleSheet.create({
   radiusOptionTextActive: {
     color: '#fff',
   },
-  applyRadiusButton: {
-    backgroundColor: '#5f259f',
-    marginHorizontal: 20,
+  modalActions: {
+    paddingHorizontal: 20,
+  },
+  cancelButton: {
+    backgroundColor: '#f8f9fa',
     paddingVertical: 16,
     borderRadius: 8,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e9ecef',
   },
-  applyRadiusText: {
-    color: '#fff',
+  cancelButtonText: {
+    color: '#6c757d',
     fontSize: 16,
     fontWeight: '600',
   },

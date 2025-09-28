@@ -232,7 +232,7 @@ export default function ProfileScreen() {
           <Text style={styles.sectionTitle}>Account Information</Text>
           
           <View style={styles.infoGrid}>
-            <View style={styles.infoItem}>
+            {/* <View style={styles.infoItem}>
               <View style={styles.infoIcon}>
                 <Feather name="hash" size={18} color="#5f259f" />
               </View>
@@ -240,7 +240,7 @@ export default function ProfileScreen() {
                 <Text style={styles.infoLabel}>Customer ID</Text>
                 <Text style={styles.infoValue}>{userProfile.id}</Text>
               </View>
-            </View>
+            </View> */}
 
             <View style={styles.infoItem}>
               <View style={styles.infoIcon}>

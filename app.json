@@ -2,17 +2,25 @@
   "expo": {
     "name": "offersclub",
     "slug": "offersclub",
+    "extra": {
+      "eas": {
+        "projectId": "com.offerplant.offersclub"
+      }
+    },
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "userInterfaceStyle": "light",
     "scheme": "offersclub",
+    
     "splash": {
       "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#667eea"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
@@ -20,11 +28,15 @@
         "CFBundleURLTypes": [
           {
             "CFBundleURLName": "offersclub",
-            "CFBundleURLSchemes": ["offersclub"]
+            "CFBundleURLSchemes": [
+              "offersclub"
+            ]
           }
         ]
       },
-      "associatedDomains": ["applinks:offersclub.offerplant.com"]
+      "associatedDomains": [
+        "applinks:offersclub.offerplant.com"
+      ]
     },
     "android": {
       "adaptiveIcon": {
@@ -47,7 +59,10 @@
               "pathPrefix": "/profile"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },

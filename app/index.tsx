@@ -25,6 +25,7 @@ const { width, height } = Dimensions.get('window');
 export default function LoginScreen() {
   const [mobile, setMobile] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loginType, setLoginType] = useState('customer'); // 'customer' or 'merchant'
 
   useEffect(() => {
     checkExistingSession();
@@ -33,8 +34,12 @@ export default function LoginScreen() {
   const checkExistingSession = async () => {
     try {
       const customerId = await AsyncStorage.getItem('customer_id');
+      const merchantId = await AsyncStorage.getItem('merchant_id');
+      
       if (customerId) {
-        router.replace('/dashboard');
+        router.replace('/(customer)/dashboard');
+      } else if (merchantId) {
+        router.replace('/(merchant)/dashboard');
       }
     } catch (error) {
       console.log('No existing session');
@@ -49,19 +54,25 @@ export default function LoginScreen() {
 
     setLoading(true);
     try {
-      const response = await axios.post(
-        'https://offersclub.offerplant.com/opex/api.php?task=send_otp',
-        { mobile }
-      );
+      const endpoint = loginType === 'merchant' 
+        ? 'https://offersclub.offerplant.com/opex/api.php?task=merchant_send_otp'
+        : 'https://offersclub.offerplant.com/opex/api.php?task=send_otp';
+
+      const response = await axios.post(endpoint, { mobile });
 
       if (response.data.status === 'success') {
-        // Store mobile and OTP for verification
+        // Store mobile, OTP, and login type for verification
         await AsyncStorage.setItem('mobile', mobile);
         await AsyncStorage.setItem('otp', response.data.otp.toString());
+        await AsyncStorage.setItem('loginType', loginType);
         
         router.push({
           pathname: '/otp',
-          params: { mobile, otpSent: response.data.otp }
+          params: { 
+            mobile, 
+            otpSent: response.data.otp,
+            loginType 
+          }
         });
       } else {
         Alert.alert('Error', response.data.msg || 'Failed to send OTP');
@@ -82,6 +93,11 @@ export default function LoginScreen() {
 
   const isValidMobile = mobile.length === 10;
 
+  const toggleLoginType = (type) => {
+    setLoginType(type);
+    setMobile(''); // Clear mobile when switching
+  };
+
   return (
     <View style={styles.container}>
       <StatusBar backgroundColor="#5f259f" barStyle="light-content" />
@@ -93,7 +109,7 @@ export default function LoginScreen() {
             <MaterialCommunityIcons name="qrcode-scan" size={32} color="#fff" />
           </View>
           <Text style={styles.brandName}>OffersClub</Text>
-          <Text style={styles.brandTagline}>Scan, Pay & Save</Text>
+          <Text style={styles.brandTagline}>Scan, Save & Smile</Text>
         </View>
       </View>
 
@@ -113,16 +129,72 @@ export default function LoginScreen() {
             <View style={styles.welcomeSection}>
               <Text style={styles.welcomeTitle}>Welcome to OffersClub</Text>
               <Text style={styles.welcomeSubtitle}>
-                India's most-loved payments app
+                India's most-loved Offers app
               </Text>
+            </View>
+
+            {/* Login Type Switcher */}
+            <View style={styles.switcherContainer}>
+              <View style={styles.switcherCard}>
+                <TouchableOpacity
+                  style={[
+                    styles.switcherOption,
+                    loginType === 'customer' && styles.switcherOptionActive
+                  ]}
+                  onPress={() => toggleLoginType('customer')}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.switcherIconContainer}>
+                    <Ionicons 
+                      name="person" 
+                      size={20} 
+                      color={loginType === 'customer' ? '#fff' : '#5f259f'} 
+                    />
+                  </View>
+                  <Text style={[
+                    styles.switcherText,
+                    loginType === 'customer' && styles.switcherTextActive
+                  ]}>
+                    Customer
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.switcherOption,
+                    loginType === 'merchant' && styles.switcherOptionActive
+                  ]}
+                  onPress={() => toggleLoginType('merchant')}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.switcherIconContainer}>
+                    <MaterialCommunityIcons 
+                      name="store" 
+                      size={20} 
+                      color={loginType === 'merchant' ? '#fff' : '#5f259f'} 
+                    />
+                  </View>
+                  <Text style={[
+                    styles.switcherText,
+                    loginType === 'merchant' && styles.switcherTextActive
+                  ]}>
+                    Merchant
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
             {/* Login Card */}
             <View style={styles.loginCard}>
               <View style={styles.loginHeader}>
-                <Text style={styles.loginTitle}>Login or Sign up</Text>
+                <Text style={styles.loginTitle}>
+                  {loginType === 'merchant' ? 'Merchant Login' : 'Login or Sign up'}
+                </Text>
                 <Text style={styles.loginSubtitle}>
-                  to get started with your account
+                  {loginType === 'merchant' 
+                    ? 'Access your merchant dashboard'
+                    : 'to get started with your account'
+                  }
                 </Text>
               </View>
 
@@ -137,7 +209,7 @@ export default function LoginScreen() {
                   </View>
                   <TextInput
                     style={styles.input}
-                    placeholder="Enter mobile number"
+                    placeholder={` ${loginType} mobile number`}
                     placeholderTextColor="#999"
                     value={mobile}
                     onChangeText={(text) => setMobile(formatMobileNumber(text))}
@@ -193,26 +265,56 @@ export default function LoginScreen() {
 
             {/* Features Section */}
             <View style={styles.featuresSection}>
-              <Text style={styles.featuresTitle}>Why choose OffersClub?</Text>
+              <Text style={styles.featuresTitle}>
+                {loginType === 'merchant' 
+                  ? 'Why choose OffersClub for Business?' 
+                  : 'Why choose OffersClub?'
+                }
+              </Text>
               <View style={styles.featuresList}>
-                <View style={styles.featureItem}>
-                  <View style={styles.featureIconContainer}>
-                    <Ionicons name="shield-checkmark" size={20} color="#00C851" />
-                  </View>
-                  <Text style={styles.featureText}>100% Secure & Safe</Text>
-                </View>
-                <View style={styles.featureItem}>
-                  <View style={styles.featureIconContainer}>
-                    <MaterialCommunityIcons name="lightning-bolt" size={20} color="#5f259f" />
-                  </View>
-                  <Text style={styles.featureText}>Instant Payments</Text>
-                </View>
-                <View style={styles.featureItem}>
-                  <View style={styles.featureIconContainer}>
-                    <MaterialCommunityIcons name="gift" size={20} color="#FF6B35" />
-                  </View>
-                  <Text style={styles.featureText}>Exclusive Cashback Offers</Text>
-                </View>
+                {loginType === 'merchant' ? (
+                  <>
+                    <View style={styles.featureItem}>
+                      <View style={styles.featureIconContainer}>
+                        <MaterialCommunityIcons name="cash-register" size={20} color="#00C851" />
+                      </View>
+                      <Text style={styles.featureText}>Easy Payment Management</Text>
+                    </View>
+                    <View style={styles.featureItem}>
+                      <View style={styles.featureIconContainer}>
+                        <MaterialCommunityIcons name="chart-line" size={20} color="#5f259f" />
+                      </View>
+                      <Text style={styles.featureText}>Business Analytics</Text>
+                    </View>
+                    <View style={styles.featureItem}>
+                      <View style={styles.featureIconContainer}>
+                        <MaterialCommunityIcons name="qrcode" size={20} color="#FF6B35" />
+                      </View>
+                      <Text style={styles.featureText}>QR Code Payments</Text>
+                    </View>
+                  </>
+                ) : (
+                  <>
+                    <View style={styles.featureItem}>
+                      <View style={styles.featureIconContainer}>
+                        <Ionicons name="shield-checkmark" size={20} color="#00C851" />
+                      </View>
+                      <Text style={styles.featureText}>100% Secure & Safe</Text>
+                    </View>
+                    <View style={styles.featureItem}>
+                      <View style={styles.featureIconContainer}>
+                        <MaterialCommunityIcons name="lightning-bolt" size={20} color="#5f259f" />
+                      </View>
+                      <Text style={styles.featureText}>Instant Cashback </Text>
+                    </View>
+                    <View style={styles.featureItem}>
+                      <View style={styles.featureIconContainer}>
+                        <MaterialCommunityIcons name="gift" size={20} color="#FF6B35" />
+                      </View>
+                      <Text style={styles.featureText}>Exclusive Offers</Text>
+                    </View>
+                  </>
+                )}
               </View>
             </View>
 
@@ -270,7 +372,7 @@ const styles = StyleSheet.create({
   },
   welcomeSection: {
     alignItems: 'center',
-    marginBottom: 30,
+    marginBottom: 20,
   },
   welcomeTitle: {
     fontSize: 22,
@@ -283,6 +385,50 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#7f8c8d',
     textAlign: 'center',
+  },
+  // New styles for switcher
+  switcherContainer: {
+    marginBottom: 20,
+  },
+  switcherCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 6,
+    flexDirection: 'row',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  switcherOption: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    backgroundColor: 'transparent',
+  },
+  switcherOptionActive: {
+    backgroundColor: '#5f259f',
+    shadowColor: '#5f259f',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  switcherIconContainer: {
+    marginRight: 8,
+  },
+  switcherText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#5f259f',
+  },
+  switcherTextActive: {
+    color: '#fff',
   },
   loginCard: {
     backgroundColor: '#fff',

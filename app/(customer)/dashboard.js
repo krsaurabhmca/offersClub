@@ -27,12 +27,15 @@ const { width, height } = Dimensions.get('window');
 export default function DashboardScreen() {
   const [userProfile, setUserProfile] = useState({});
   const [dashboardData, setDashboardData] = useState(null);
+  const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [withdrawLoading, setWithdrawLoading] = useState(false);
 
   useEffect(() => {
     loadUserProfile();
     loadDashboardData();
+    loadCategories();
   }, []);
 
   const loadUserProfile = async () => {
@@ -74,6 +77,20 @@ export default function DashboardScreen() {
       }
     } catch (error) {
       console.error('Error loading dashboard data:', error);
+    }
+  };
+
+  const loadCategories = async () => {
+    try {
+      const response = await axios.get(
+        'https://offersclub.offerplant.com/opex/api.php?task=get_categories'
+      );
+
+      if (response.data && response.data.status === 'success') {
+        setCategories(response.data.data);
+      }
+    } catch (error) {
+      console.error('Error loading categories:', error);
     } finally {
       setLoading(false);
     }
@@ -81,9 +98,53 @@ export default function DashboardScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([loadUserProfile(), loadDashboardData()]);
+    await Promise.all([loadUserProfile(), loadDashboardData(), loadCategories()]);
     setRefreshing(false);
   }, []);
+
+  const handleWithdrawRequest = async () => {
+    const walletAmount = parseFloat(userProfile.wallet || 0);
+    
+    if (walletAmount < 50) {
+      Alert.alert(
+        'Insufficient Balance', 
+        `Minimum ₹50 required for withdrawal. Your current balance is ${formatCurrency(walletAmount)}.`,
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    Alert.alert(
+      'Withdraw Request',
+      `Available Balance: ${formatCurrency(walletAmount)}\n\nDo you want to request a withdrawal?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Request Withdrawal',
+          onPress: async () => {
+            setWithdrawLoading(true);
+            try {
+              const customerId = await AsyncStorage.getItem("customer_id");
+              // Add your withdraw API call here
+              // const response = await axios.post('your-withdraw-endpoint', {
+              //   customer_id: customerId,
+              //   amount: walletAmount
+              // });
+              
+              // Simulated success for now
+              setTimeout(() => {
+                setWithdrawLoading(false);
+                Alert.alert('Success', 'Withdrawal request submitted successfully!');
+              }, 2000);
+            } catch (error) {
+              setWithdrawLoading(false);
+              Alert.alert('Error', 'Failed to submit withdrawal request. Please try again.');
+            }
+          }
+        }
+      ]
+    );
+  };
 
   const logout = async () => {
     Alert.alert("Logout", "Are you sure you want to logout?", [
@@ -118,6 +179,35 @@ export default function DashboardScreen() {
       maximumFractionDigits: 0,
     }).format(amount);
   };
+
+  const handleCategoryPress = (category) => {
+    router.push({
+      pathname: "/nearby-merchants",
+      params: { 
+        categoryId: category.id,
+        categoryName: category.name 
+      }
+    });
+  };
+
+  const CategoryItem = ({ category }) => (
+    <TouchableOpacity 
+      style={styles.categoryItem} 
+      onPress={() => handleCategoryPress(category)}
+      activeOpacity={0.7}
+    >
+      <View style={styles.categoryIconContainer}>
+        <Ionicons 
+          name={category.icon} 
+          size={24} 
+          color="#5f259f" 
+        />
+      </View>
+      <Text style={styles.categoryTitle} numberOfLines={2}>
+        {category.name}
+      </Text>
+    </TouchableOpacity>
+  );
 
   const QuickActionItem = ({ icon, title, onPress, notification = null }) => (
     <TouchableOpacity style={styles.quickActionItem} onPress={onPress} activeOpacity={0.7}>
@@ -160,7 +250,7 @@ export default function DashboardScreen() {
             </View>
           </View>
           <TouchableOpacity style={styles.profileButton} onPress={() => router.push("/profile")}>
-            <Ionicons name="person-circle-outline" size={28} color="#fff" />
+            <Ionicons name="person-circle-outline" size={32} color="#fff" />
           </TouchableOpacity>
         </View>
       </View>
@@ -176,105 +266,198 @@ export default function DashboardScreen() {
           />
         }
       >
-        {/* Wallet Card */}
+        {/* Simplified Wallet Card */}
         <View style={styles.walletCard}>
           <View style={styles.walletHeader}>
-            <Text style={styles.walletLabel}>OffersClub Wallet</Text>
-            <View style={styles.walletStatus}>
-              <View style={[styles.statusDot, { 
-                backgroundColor: userProfile.status === 'ACTIVE' ? '#00C851' : '#ff4757' 
-              }]} />
-              <Text style={styles.statusText}>{userProfile.status || 'ACTIVE'}</Text>
+            <View>
+              <Text style={styles.walletLabel}>OffersClub Wallet</Text>
+              <View style={styles.walletStatus}>
+                <View style={[styles.statusDot, { 
+                  backgroundColor: userProfile.status === 'ACTIVE' ? '#00C851' : '#ff4757' 
+                }]} />
+                <Text style={styles.statusText}>{userProfile.status || 'ACTIVE'}</Text>
+              </View>
+            </View>
+            <View style={styles.walletAmountSection}>
+              <Text style={styles.walletAmount}>
+                {formatCurrency(parseFloat(userProfile.wallet || 0))}
+              </Text>
             </View>
           </View>
-          <Text style={styles.walletAmount}>
-            {formatCurrency(parseFloat(userProfile.wallet || 0))}
-          </Text>
-          <View style={styles.walletActions}>
-            <TouchableOpacity style={styles.walletAction} onPress={() => router.push("/qr-scanner")}>
-              <MaterialCommunityIcons name="qrcode-scan" size={20} color="#5f259f" />
-              <Text style={styles.walletActionText}>Scan & Pay</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.walletAction} onPress={() => router.push("/nearby-merchants")}>
-              <Ionicons name="location-outline" size={20} color="#5f259f" />
-              <Text style={styles.walletActionText}>Find Stores</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.walletAction} onPress={() => router.push("/transaction-history")}>
-              <MaterialIcons name="history" size={20} color="#5f259f" />
-              <Text style={styles.walletActionText}>History</Text>
-            </TouchableOpacity>
-          </View>
+          
+          <TouchableOpacity
+            style={[
+              styles.withdrawButton,
+              parseFloat(userProfile.wallet || 0) < 50 && styles.withdrawButtonDisabled
+            ]}
+            onPress={handleWithdrawRequest}
+            disabled={withdrawLoading || parseFloat(userProfile.wallet || 0) < 50}
+            activeOpacity={0.8}
+          >
+            {withdrawLoading ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <>
+                <MaterialIcons name="account-balance-wallet" size={20} color="#fff" />
+                <Text style={styles.withdrawButtonText}>
+                  {parseFloat(userProfile.wallet || 0) < 50 ? 'Minimum ₹50 Required' : 'Request Withdrawal'}
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
+          
+          {parseFloat(userProfile.wallet || 0) < 50 && (
+            <Text style={styles.minimumText}>
+              Minimum withdrawal amount is ₹50
+            </Text>
+          )}
         </View>
 
-        {/* Transaction Summary */}
+        {/* Enhanced Transaction Summary */}
         {dashboardData?.transactions && (
-          <View style={styles.summaryCard}>
-            <Text style={styles.summaryTitle}>Your Transaction Summary</Text>
-            <View style={styles.summaryGrid}>
-              <View style={styles.summaryItem}>
-                <Text style={styles.summaryValue}>
-                  {formatCurrency(dashboardData.transactions.summary.total_amount)}
-                </Text>
-                <Text style={styles.summaryLabel}>Total Spent</Text>
+          <TouchableOpacity 
+            style={styles.transactionCard}
+            onPress={() => router.push("/transaction-history")}
+            activeOpacity={0.8}
+          >
+            <View style={styles.transactionHeader}>
+              <View>
+                <Text style={styles.transactionTitle}>Transaction Summary</Text>
+                <Text style={styles.transactionSubtitle}>Tap to view detailed history</Text>
               </View>
-              <View style={styles.summaryItem}>
-                <Text style={styles.summaryValue}>
-                  {dashboardData.transactions.counts.total}
-                </Text>
-                <Text style={styles.summaryLabel}>Transactions</Text>
-              </View>
-            </View>
-            <View style={styles.summaryRow}>
-              <View style={styles.summaryRowItem}>
-                <View style={[styles.statusDot, { backgroundColor: '#00C851' }]} />
-                <Text style={styles.summaryRowText}>
-                  Successful: {formatCurrency(dashboardData.transactions.summary.total_confirmed_amount)} ({dashboardData.transactions.counts.confirmed})
-                </Text>
-              </View>
-              <View style={styles.summaryRowItem}>
-                <View style={[styles.statusDot, { backgroundColor: '#FF8800' }]} />
-                <Text style={styles.summaryRowText}>
-                  Pending: {formatCurrency(dashboardData.transactions.summary.total_pending_amount)} ({dashboardData.transactions.counts.pending})
-                </Text>
+              <View style={styles.viewAllContainer}>
+                <Text style={styles.viewAllText}>View All</Text>
+                <Ionicons name="chevron-forward" size={16} color="#5f259f" />
               </View>
             </View>
-          </View>
+            
+            <View style={styles.transactionStats}>
+              <View style={styles.statItem}>
+                <View style={styles.statIconContainer}>
+                  <MaterialIcons name="account-balance-wallet" size={20} color="#5f259f" />
+                </View>
+                <View style={styles.statContent}>
+                  <Text style={styles.statValue}>
+                    {formatCurrency(dashboardData.transactions.summary.total_amount)}
+                  </Text>
+                  <Text style={styles.statLabel}>Total Spent</Text>
+                </View>
+              </View>
+              
+              <View style={styles.statDivider} />
+              
+              <View style={styles.statItem}>
+                <View style={styles.statIconContainer}>
+                  <MaterialIcons name="receipt" size={20} color="#5f259f" />
+                </View>
+                <View style={styles.statContent}>
+                  <Text style={styles.statValue}>
+                    {dashboardData.transactions.counts.total}
+                  </Text>
+                  <Text style={styles.statLabel}> Transactions</Text>
+                </View>
+              </View>
+            </View>
+            
+            <View style={styles.transactionBreakdown}>
+              <View style={styles.breakdownItem}>
+                <View style={styles.breakdownIndicator}>
+                  <View style={[styles.statusDot, { backgroundColor: '#00C851' }]} />
+                  <Text style={styles.breakdownLabel}>Successful</Text>
+                </View>
+                <View style={styles.breakdownValues}>
+                  <Text style={styles.breakdownAmount}>
+                    {formatCurrency(dashboardData.transactions.summary.total_confirmed_amount)}
+                  </Text>
+                  <Text style={styles.breakdownCount}>
+                    ({dashboardData.transactions.counts.confirmed} transactions)
+                  </Text>
+                </View>
+              </View>
+              
+              <View style={styles.breakdownItem}>
+                <View style={styles.breakdownIndicator}>
+                  <View style={[styles.statusDot, { backgroundColor: '#FF8800' }]} />
+                  <Text style={styles.breakdownLabel}>Pending</Text>
+                </View>
+                <View style={styles.breakdownValues}>
+                  <Text style={styles.breakdownAmount}>
+                    {formatCurrency(dashboardData.transactions.summary.total_pending_amount)}
+                  </Text>
+                  <Text style={styles.breakdownCount}>
+                    ({dashboardData.transactions.counts.pending} transactions)
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </TouchableOpacity>
         )}
 
-        {/* Quick Actions - Your App Features */}
+        {/* Categories Section */}
+        <View style={styles.categoriesCard}>
+          <View style={styles.categoriesHeader}>
+            <Text style={styles.cardTitle}>Shop by Categories</Text>
+            <TouchableOpacity onPress={() => router.push("/nearby-merchants")}>
+              <Text style={styles.seeAllText}>View All</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.categoriesScroll}
+          >
+            {categories.slice(0, 8).map((category) => (
+              <CategoryItem key={category.id} category={category} />
+            ))}
+            {categories.length > 8 && (
+              <TouchableOpacity 
+                style={styles.categoryItem} 
+                onPress={() => router.push("/nearby-merchants")}
+                activeOpacity={0.7}
+              >
+                <View style={styles.categoryIconContainer}>
+                  <Ionicons name="ellipsis-horizontal" size={24} color="#5f259f" />
+                </View>
+                <Text style={styles.categoryTitle}>View All</Text>
+              </TouchableOpacity>
+            )}
+          </ScrollView>
+        </View>
+
+        {/* Essential Services - Quick Actions */}
         <View style={styles.quickActionsCard}>
-          <Text style={styles.cardTitle}>Quick Actions</Text>
+          <Text style={styles.cardTitle}>Essential Services</Text>
           <View style={styles.quickActionsGrid}>
             <QuickActionItem
-              icon={<MaterialCommunityIcons name="qrcode-scan" size={32} color="#5f259f" />}
+              icon={<MaterialCommunityIcons name="qrcode-scan" size={28} color="#5f259f" />}
               title="Scan QR Code"
               onPress={() => router.push("/qr-scanner")}
             />
             <QuickActionItem
-              icon={<Ionicons name="location-outline" size={32} color="#5f259f" />}
-              title="Nearby Merchants"
-              onPress={() => router.push("/nearby-merchants")}
-            />
-            <QuickActionItem
-              icon={<MaterialIcons name="local-offer" size={32} color="#5f259f" />}
+              icon={<MaterialIcons name="local-offer" size={28} color="#5f259f" />}
               title="Special Offers"
               onPress={() => router.push("/offers")}
               notification={dashboardData?.offers?.active?.toString()}
             />
             <QuickActionItem
-              icon={<MaterialIcons name="history" size={32} color="#5f259f" />}
+              icon={<MaterialIcons name="history" size={28} color="#5f259f" />}
               title="Transaction History"
               onPress={() => router.push("/transaction-history")}
             />
             <QuickActionItem
-              icon={<Ionicons name="person-outline" size={32} color="#5f259f" />}
+              icon={<Ionicons name="person-outline" size={28} color="#5f259f" />}
               title="My Profile"
               onPress={() => router.push("/profile")}
             />
             <QuickActionItem
-              icon={<FontAwesome5 name="wallet" size={28} color="#5f259f" />}
+              icon={<FontAwesome5 name="wallet" size={24} color="#5f259f" />}
               title="Wallet Details"
               onPress={() => router.push("/profile")}
+            />
+            <QuickActionItem
+              icon={<Ionicons name="help-circle-outline" size={28} color="#5f259f" />}
+              title="Help & Support"
+              onPress={() => {}}
             />
           </View>
         </View>
@@ -322,44 +505,6 @@ export default function DashboardScreen() {
               </View>
               <Ionicons name="chevron-forward" size={20} color="#ccc" />
             </TouchableOpacity>
-
-            <TouchableOpacity style={styles.businessService} onPress={() => router.push("/transaction-history")}>
-              <View style={styles.businessServiceIcon}>
-                <MaterialIcons name="receipt-long" size={24} color="#5f259f" />
-              </View>
-              <View style={styles.businessServiceContent}>
-                <Text style={styles.businessServiceTitle}>Payment History</Text>
-                <Text style={styles.businessServiceSubtitle}>
-                  View all your {dashboardData?.transactions?.counts?.total || 0} transactions
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color="#ccc" />
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Account & Settings */}
-        <View style={styles.accountCard}>
-          <View style={styles.accountHeader}>
-            <Text style={styles.accountTitle}>Account & Settings</Text>
-          </View>
-          <View style={styles.accountGrid}>
-            <TouchableOpacity style={styles.accountItem} onPress={() => router.push("/profile")}>
-              <Ionicons name="person-circle-outline" size={24} color="#5f259f" />
-              <Text style={styles.accountItemText}>Profile Settings</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.accountItem} onPress={() => router.push("/transaction-history")}>
-              <MaterialIcons name="history" size={24} color="#5f259f" />
-              <Text style={styles.accountItemText}>Payment History</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.accountItem} onPress={() => router.push("/offers")}>
-              <MaterialIcons name="card-giftcard" size={24} color="#5f259f" />
-              <Text style={styles.accountItemText}>My Offers</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.accountItem} onPress={() => {}}>
-              <Ionicons name="help-circle-outline" size={24} color="#5f259f" />
-              <Text style={styles.accountItemText}>Help & Support</Text>
-            </TouchableOpacity>
           </View>
         </View>
 
@@ -385,10 +530,10 @@ export default function DashboardScreen() {
         </View>
 
         {/* Logout Button */}
-        <TouchableOpacity style={styles.logoutCard} onPress={logout}>
+        {/* <TouchableOpacity style={styles.logoutCard} onPress={logout}>
           <Ionicons name="log-out-outline" size={24} color="#ff4757" />
           <Text style={styles.logoutText}>Sign Out</Text>
-        </TouchableOpacity>
+        </TouchableOpacity> */}
 
         <View style={styles.bottomPadding} />
       </ScrollView>
@@ -417,11 +562,12 @@ const styles = StyleSheet.create({
     paddingTop: 45,
     paddingBottom: 20,
     paddingHorizontal: 20,
+    paddingRight: 60,
   },
   headerContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-end',
   },
   userSection: {
     flexDirection: 'row',
@@ -453,14 +599,17 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: '#fff',
+    textTransform: 'capitalize',
   },
   profileButton: {
     padding: 8,
+    marginRight: 20,
   },
   content: {
     flex: 1,
     paddingTop: 16,
   },
+  // Enhanced Wallet Card Styles
   walletCard: {
     backgroundColor: '#fff',
     marginHorizontal: 16,
@@ -476,13 +625,14 @@ const styles = StyleSheet.create({
   walletHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
+    alignItems: 'flex-start',
+    marginBottom: 16,
   },
   walletLabel: {
     fontSize: 14,
     color: '#666',
     fontWeight: '600',
+    marginBottom: 4,
   },
   walletStatus: {
     flexDirection: 'row',
@@ -499,26 +649,48 @@ const styles = StyleSheet.create({
     color: '#666',
     fontWeight: '500',
   },
+  walletAmountSection: {
+    alignItems: 'flex-end',
+  },
   walletAmount: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: 'bold',
-    color: '#000',
-    marginBottom: 16,
-  },
-  walletActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  walletAction: {
-    alignItems: 'center',
-    gap: 4,
-  },
-  walletActionText: {
-    fontSize: 12,
     color: '#5f259f',
-    fontWeight: '500',
   },
-  summaryCard: {
+  withdrawButton: {
+    backgroundColor: '#5f259f',
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+    shadowColor: '#5f259f',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  withdrawButtonDisabled: {
+    backgroundColor: '#bdc3c7',
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  withdrawButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  minimumText: {
+    fontSize: 12,
+    color: '#ff4757',
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+  // Enhanced Transaction Card Styles
+  transactionCard: {
     backgroundColor: '#fff',
     marginHorizontal: 16,
     marginBottom: 16,
@@ -530,42 +702,145 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
-  summaryTitle: {
+  transactionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
+  transactionTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: '#000',
-    marginBottom: 16,
+    marginBottom: 2,
   },
-  summaryGrid: {
-    flexDirection: 'row',
-    marginBottom: 16,
-  },
-  summaryItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  summaryValue: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#5f259f',
-    marginBottom: 4,
-  },
-  summaryLabel: {
+  transactionSubtitle: {
     fontSize: 12,
     color: '#666',
-    textAlign: 'center',
   },
-  summaryRow: {
-    gap: 8,
-  },
-  summaryRowItem: {
+  viewAllContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 4,
   },
-  summaryRowText: {
+  viewAllText: {
+    fontSize: 14,
+    color: '#5f259f',
+    fontWeight: '500',
+    marginRight: 4,
+  },
+  transactionStats: {
+    flexDirection: 'row',
+    marginBottom: 16,
+  },
+  statItem: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  statIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#f8f9fa',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  statContent: {
+    flex: 1,
+  },
+  statValue: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#5f259f',
+    marginBottom: 2,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#666',
+  },
+  statDivider: {
+    width: 1,
+    backgroundColor: '#e9ecef',
+    marginHorizontal: 12,
+  },
+  transactionBreakdown: {
+    borderTopWidth: 1,
+    borderTopColor: '#f1f3f4',
+    paddingTop: 16,
+    gap: 12,
+  },
+  breakdownItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  breakdownIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  breakdownLabel: {
     fontSize: 13,
     color: '#666',
+    marginLeft: 8,
+  },
+  breakdownValues: {
+    alignItems: 'flex-end',
+  },
+  breakdownAmount: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#000',
+  },
+  breakdownCount: {
+    fontSize: 11,
+    color: '#666',
+  },
+  // Categories Styles
+  categoriesCard: {
+    backgroundColor: '#fff',
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderRadius: 12,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  categoriesHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  categoriesScroll: {
+    paddingRight: 16,
+  },
+  categoryItem: {
+    alignItems: 'center',
+    marginRight: 20,
+    width: 70,
+  },
+  categoryIconContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#f8f9fa',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+  },
+  categoryTitle: {
+    fontSize: 11,
+    color: '#333',
+    textAlign: 'center',
+    fontWeight: '500',
+    lineHeight: 14,
   },
   quickActionsCard: {
     backgroundColor: '#fff',
@@ -677,44 +952,6 @@ const styles = StyleSheet.create({
   businessServiceSubtitle: {
     fontSize: 12,
     color: '#666',
-  },
-  accountCard: {
-    backgroundColor: '#fff',
-    marginHorizontal: 16,
-    marginBottom: 16,
-    borderRadius: 12,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  accountHeader: {
-    marginBottom: 16,
-  },
-  accountTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#000',
-  },
-  accountGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-  },
-  accountItem: {
-    alignItems: 'center',
-    width: '48%',
-    padding: 12,
-    marginBottom: 12,
-  },
-  accountItemText: {
-    fontSize: 11,
-    color: '#333',
-    textAlign: 'center',
-    marginTop: 8,
-    fontWeight: '500',
   },
   profileSummaryCard: {
     backgroundColor: '#fff',

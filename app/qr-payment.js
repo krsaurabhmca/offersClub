@@ -7,8 +7,10 @@ import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   Keyboard,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -19,12 +21,16 @@ import {
   View,
 } from 'react-native';
 
-export default function QRPaymentScreen() {
+export default function QRCashbackClaimScreen() {
   const { merchantData, qrCode } = useLocalSearchParams();
   const [amount, setAmount] = useState('');
   const [loading, setLoading] = useState(false);
   const [customerId, setCustomerId] = useState('');
   const [merchant, setMerchant] = useState(null);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [transactionData, setTransactionData] = useState(null);
+  const [scaleAnim] = useState(new Animated.Value(0));
+  const [fadeAnim] = useState(new Animated.Value(0));
 
   useEffect(() => {
     loadCustomerId();
@@ -39,6 +45,24 @@ export default function QRPaymentScreen() {
     }
   }, [merchantData]);
 
+  useEffect(() => {
+    if (showSuccessModal) {
+      Animated.parallel([
+        Animated.spring(scaleAnim, {
+          toValue: 1,
+          tension: 50,
+          friction: 7,
+          useNativeDriver: true,
+        }),
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [showSuccessModal]);
+
   const loadCustomerId = async () => {
     try {
       const id = await AsyncStorage.getItem('customer_id');
@@ -49,9 +73,9 @@ export default function QRPaymentScreen() {
     }
   };
 
-  const processPayment = async () => {
+  const processCashbackClaim = async () => {
     if (!amount || parseFloat(amount) <= 0) {
-      Alert.alert('Error', 'Please enter a valid amount');
+      Alert.alert('Error', 'Please enter a valid transaction amount');
       return;
     }
 
@@ -77,25 +101,31 @@ export default function QRPaymentScreen() {
       );
 
       if (response.data.status === 'success') {
-        Alert.alert(
-          'Payment Successful!',
-          `Transaction completed successfully to ${merchant.business_name}.\nTransaction ID: ${response.data.id}`,
-          [
-            {
-              text: 'Done',
-              onPress: () => router.replace('/dashboard')
-            }
-          ]
-        );
+        const currentDate = new Date();
+        setTransactionData({
+          id: response.data.id,
+          amount: parseFloat(amount),
+          merchant: merchant.business_name,
+          date: currentDate.toLocaleDateString(),
+          time: currentDate.toLocaleTimeString(),
+          cashbackPercent: 5, // You can get this from API response
+          cashbackAmount: (parseFloat(amount) * 0.05).toFixed(2) // Calculate based on percentage
+        });
+        setShowSuccessModal(true);
       } else {
-        Alert.alert('Error', response.data.msg || 'Transaction failed');
+        Alert.alert('Error', response.data.msg || 'Cashback claim failed');
       }
     } catch (error) {
-      console.error('Payment error:', error);
+      console.error('Cashback claim error:', error);
       Alert.alert('Error', 'Network error. Please try again.');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSuccessClose = () => {
+    setShowSuccessModal(false);
+    router.replace('/dashboard');
   };
 
   const formatAmount = (text) => {
@@ -114,6 +144,95 @@ export default function QRPaymentScreen() {
     if (!name) return "M";
     return name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
   };
+
+  const SuccessModal = () => (
+    <Modal
+      visible={showSuccessModal}
+      transparent={true}
+      animationType="none"
+      onRequestClose={handleSuccessClose}
+    >
+      <View style={styles.modalOverlay}>
+        <Animated.View 
+          style={[
+            styles.modalContent,
+            {
+              transform: [{ scale: scaleAnim }],
+              opacity: fadeAnim,
+            }
+          ]}
+        >
+          <LinearGradient
+            colors={['#4CAF50', '#45a049']}
+            style={styles.successHeader}
+          >
+            <View style={styles.successIconContainer}>
+              <Ionicons name="checkmark-circle" size={60} color="#fff" />
+            </View>
+            <Text style={styles.successTitle}>Cashback Claimed!</Text>
+            <Text style={styles.successSubtitle}>Your request has been processed successfully</Text>
+          </LinearGradient>
+
+          <View style={styles.successBody}>
+            <View style={styles.cashbackAmountContainer}>
+              <Text style={styles.cashbackLabel}>Cashback Earned</Text>
+              <Text style={styles.cashbackAmount}>₹{transactionData?.cashbackAmount}</Text>
+              <Text style={styles.cashbackPercent}>{transactionData?.cashbackPercent}% of transaction amount</Text>
+            </View>
+
+            <View style={styles.transactionDetails}>
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Transaction Amount</Text>
+                <Text style={styles.detailValue}>₹{transactionData?.amount}</Text>
+              </View>
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Merchant</Text>
+                <Text style={styles.detailValue}>{transactionData?.merchant}</Text>
+              </View>
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Claim ID</Text>
+                <Text style={styles.detailValue}>#{transactionData?.id}</Text>
+              </View>
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Date & Time</Text>
+                <Text style={styles.detailValue}>
+                  {transactionData?.date} at {transactionData?.time}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.successInfo}>
+              <Ionicons name="information-circle-outline" size={16} color="#666" />
+              <Text style={styles.successInfoText}>
+                Cashback will be credited to your wallet within 24-48 hours
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.modalActions}>
+            <TouchableOpacity 
+              style={styles.primaryAction}
+              onPress={handleSuccessClose}
+            >
+              <Ionicons name="home" size={20} color="#fff" style={styles.actionIcon} />
+              <Text style={styles.primaryActionText}>Go to Dashboard</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.secondaryAction}
+              onPress={() => {
+                // You can add share functionality here
+                handleSuccessClose();
+              }}
+            >
+              <Ionicons name="share-outline" size={18} color="#5F259F" />
+              <Text style={styles.secondaryActionText}>Share</Text>
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
+      </View>
+    </Modal>
+  );
 
   if (!merchant) {
     return (
@@ -145,7 +264,7 @@ export default function QRPaymentScreen() {
                 >
                   <Ionicons name="arrow-back" size={24} color="#fff" />
                 </TouchableOpacity>
-                <Text style={styles.title}>Pay to Merchant</Text>
+                <Text style={styles.title}>Claim Cashback</Text>
                 <View style={styles.spacer} />
               </View>
 
@@ -174,11 +293,6 @@ export default function QRPaymentScreen() {
                   </Text>
                 </View>
                 
-                <View style={styles.merchantInfoRow}>
-                  <MaterialIcons name="confirmation-number" size={16} color="#666" style={styles.infoIcon} />
-                  <Text style={styles.merchantInfo}>Merchant ID: {merchant.id}</Text>
-                </View>
-                
                 <View style={[
                   styles.statusBadge, 
                   { backgroundColor: merchant.status === 'ACTIVE' ? '#4CAF50' : '#f44336' }
@@ -193,11 +307,11 @@ export default function QRPaymentScreen() {
                 </View>
               </View>
 
-              <View style={styles.paymentForm}>
+              <View style={styles.claimForm}>
                 <View style={styles.amountContainer}>
                   <Text style={styles.amountLabel}>
-                    <Ionicons name="cash-outline" size={18} color="#fff" style={styles.amountIcon} />
-                    Enter Amount
+                    <Ionicons name="receipt-outline" size={18} color="#fff" style={styles.amountIcon} />
+                    Enter Transaction Amount
                   </Text>
                   <View style={styles.amountInputContainer}>
                     <Text style={styles.currencySymbol}>₹</Text>
@@ -239,31 +353,31 @@ export default function QRPaymentScreen() {
                   </View>
                 </View>
 
-                <View style={styles.securePaymentInfo}>
-                  <Ionicons name="shield-checkmark-outline" size={16} color="#E0E0E0" />
-                  <Text style={styles.securePaymentText}>100% secure payment</Text>
+                <View style={styles.secureCashbackInfo}>
+                  <Ionicons name="gift-outline" size={16} color="#E0E0E0" />
+                  <Text style={styles.secureCashbackText}>100% secure cashback claim</Text>
                 </View>
               </View>
 
               <TouchableOpacity
                 style={[
-                  styles.payButton,
-                  (!amount || parseFloat(amount) <= 0) && styles.payButtonDisabled
+                  styles.claimButton,
+                  (!amount || parseFloat(amount) <= 0) && styles.claimButtonDisabled
                 ]}
-                onPress={processPayment}
+                onPress={processCashbackClaim}
                 disabled={!amount || parseFloat(amount) <= 0 || loading}
               >
                 {loading ? (
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
                   <>
-                    <View style={styles.payButtonContent}>
-                      <Ionicons name="checkmark-circle" size={20} color="#fff" style={styles.payButtonIcon} />
-                      <Text style={styles.payButtonText}>
-                        Pay ₹{amount || '0.00'}
+                    <View style={styles.claimButtonContent}>
+                      <Ionicons name="gift" size={20} color="#fff" style={styles.claimButtonIcon} />
+                      <Text style={styles.claimButtonText}>
+                        Claim Cashback for ₹{amount || '0.00'}
                       </Text>
                     </View>
-                    <Text style={styles.payButtonMerchant}>to {merchant.business_name}</Text>
+                    <Text style={styles.claimButtonMerchant}>from {merchant.business_name}</Text>
                   </>
                 )}
               </TouchableOpacity>
@@ -274,12 +388,14 @@ export default function QRPaymentScreen() {
                   onPress={() => router.back()}
                   disabled={loading}
                 >
-                  <Text style={styles.cancelButtonText}>Cancel Payment</Text>
+                  <Text style={styles.cancelButtonText}>Cancel Claim</Text>
                 </TouchableOpacity>
               </View>
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
+
+        <SuccessModal />
       </LinearGradient>
     </TouchableWithoutFeedback>
   );
@@ -400,10 +516,6 @@ const styles = StyleSheet.create({
     color: '#666',
     flex: 1,
   },
-  merchantInfo: {
-    fontSize: 14,
-    color: '#666',
-  },
   statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -421,7 +533,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
-  paymentForm: {
+  claimForm: {
     marginBottom: 24,
   },
   amountContainer: {
@@ -503,18 +615,18 @@ const styles = StyleSheet.create({
   quickAmountTextActive: {
     color: '#5F259F',
   },
-  securePaymentInfo: {
+  secureCashbackInfo: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 20,
   },
-  securePaymentText: {
+  secureCashbackText: {
     color: '#E0E0E0',
     fontSize: 13,
     marginLeft: 6,
   },
-  payButton: {
+  claimButton: {
     backgroundColor: '#4F29B1',
     borderRadius: 12,
     padding: 16,
@@ -526,23 +638,23 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
-  payButtonDisabled: {
+  claimButtonDisabled: {
     backgroundColor: 'rgba(79, 41, 177, 0.6)',
   },
-  payButtonContent: {
+  claimButtonContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  payButtonIcon: {
+  claimButtonIcon: {
     marginRight: 8,
   },
-  payButtonText: {
+  claimButtonText: {
     color: '#fff',
     fontSize: 18,
     fontWeight: 'bold',
   },
-  payButtonMerchant: {
+  claimButtonMerchant: {
     color: 'rgba(255,255,255,0.8)',
     fontSize: 13,
     marginTop: 4,
@@ -557,5 +669,139 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     textDecorationLine: 'underline',
+  },
+  // Success Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    width: '100%',
+    maxWidth: 400,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  successHeader: {
+    alignItems: 'center',
+    paddingVertical: 30,
+    paddingHorizontal: 20,
+  },
+  successIconContainer: {
+    marginBottom: 16,
+  },
+  successTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 8,
+  },
+  successSubtitle: {
+    fontSize: 16,
+    color: 'rgba(255,255,255,0.9)',
+    textAlign: 'center',
+  },
+  successBody: {
+    padding: 20,
+  },
+  cashbackAmountContainer: {
+    alignItems: 'center',
+    marginBottom: 30,
+    paddingVertical: 20,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+  },
+  cashbackLabel: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 8,
+  },
+  cashbackAmount: {
+    fontSize: 36,
+    fontWeight: 'bold',
+    color: '#4CAF50',
+    marginBottom: 4,
+  },
+  cashbackPercent: {
+    fontSize: 14,
+    color: '#888',
+  },
+  transactionDetails: {
+    marginBottom: 20,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  detailLabel: {
+    fontSize: 14,
+    color: '#666',
+    flex: 1,
+  },
+  detailValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    textAlign: 'right',
+    flex: 1,
+  },
+  successInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#e3f2fd',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 20,
+  },
+  successInfoText: {
+    fontSize: 12,
+    color: '#666',
+    marginLeft: 8,
+    flex: 1,
+  },
+  modalActions: {
+    padding: 20,
+    paddingTop: 0,
+  },
+  primaryAction: {
+    backgroundColor: '#5F259F',
+    borderRadius: 12,
+    paddingVertical: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  actionIcon: {
+    marginRight: 8,
+  },
+  primaryActionText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  secondaryAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+  },
+  secondaryActionText: {
+    color: '#5F259F',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 6,
   },
 });

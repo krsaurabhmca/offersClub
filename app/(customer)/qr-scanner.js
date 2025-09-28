@@ -4,14 +4,14 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Dimensions,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    Vibration,
-    View,
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  Vibration,
+  View,
 } from 'react-native';
 
 const { width, height } = Dimensions.get('window');
@@ -68,7 +68,7 @@ export default function QRScannerScreen() {
       setValidating(true);
       
       const response = await axios.post(
-        'https://offersclub.offerplant.com/opex/api.php?task=get_merchant_profile',
+        'https://offersclub.offerplant.com/opex/api.php?task=get_merchant_profile_by_qr',
         { qr_code: qrCode }
       );
 

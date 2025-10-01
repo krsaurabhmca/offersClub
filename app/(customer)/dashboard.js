@@ -21,8 +21,11 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+// OneSignal import
+import { OneSignal } from 'react-native-onesignal';
 
 const { width, height } = Dimensions.get('window');
+
 
 export default function DashboardScreen() {
   const [userProfile, setUserProfile] = useState({});
@@ -31,12 +34,70 @@ export default function DashboardScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [withdrawLoading, setWithdrawLoading] = useState(false);
+  // OneSignal permission state
+  const [notificationPermission, setNotificationPermission] = useState(false);
 
   useEffect(() => {
     loadUserProfile();
     loadDashboardData();
     loadCategories();
+    
+    // OneSignal setup
+    setupOneSignal();
   }, []);
+
+  // OneSignal setup function
+  const setupOneSignal = async () => {
+    try {
+      // Check if permission already exists
+      const permission = await OneSignal.Notifications.getPermissionAsync();
+      setNotificationPermission(permission);
+      
+      if (!permission) {
+        // Request notification permission
+        const result = await OneSignal.Notifications.requestPermission(true);
+        setNotificationPermission(result);
+      }
+      
+      // Set notification handlers
+      OneSignal.Notifications.addEventListener('foregroundWillDisplay', event => {
+        console.log('Notification received in foreground:', event);
+        // Display the notification
+        event.preventDefault();
+        event.getNotification().display();
+      });
+      
+      OneSignal.Notifications.addEventListener('click', event => {
+        console.log('Notification clicked:', event);
+        const data = event.notification.additionalData;
+        
+        // Handle different notification types for navigation
+        if (data?.screen) {
+          router.push(data.screen);
+        } else if (data?.type) {
+          switch(data.type) {
+            case 'offer':
+              router.push('/offers');
+              break;
+            case 'transaction':
+              router.push('/transaction-history');
+              break;
+            case 'merchant':
+              router.push('/nearby-merchants');
+              break;
+          }
+        }
+      });
+      
+      return () => {
+        // Cleanup event listeners
+        OneSignal.Notifications.removeEventListener('foregroundWillDisplay');
+        OneSignal.Notifications.removeEventListener('click');
+      };
+    } catch (error) {
+      console.error('OneSignal setup error:', error);
+    }
+  };
 
   const loadUserProfile = async () => {
     try {
@@ -53,9 +114,79 @@ export default function DashboardScreen() {
         await AsyncStorage.setItem('user_name', response.data.name || '');
         await AsyncStorage.setItem('user_email', response.data.email || '');
         await AsyncStorage.setItem('user_address', response.data.address || '');
+        
+        // Link user ID with OneSignal for targeted notifications
+        await linkUserWithOneSignal(customerId);
       }
     } catch (error) {
       console.error('Error loading user profile:', error);
+    }
+  };
+
+  // OneSignal user linking function
+  const linkUserWithOneSignal = async (userId) => {
+    try {
+      // Set external user ID in OneSignal
+      await OneSignal.login(userId.toString());
+      
+      // Add user tags for segmentation
+      await OneSignal.User.addTags({
+        userType: 'customer',
+        userId: userId,
+        wallet: userProfile.wallet || '0'
+      });
+      
+      console.log('User linked with OneSignal:', userId);
+      
+      // Get device ID and send to backend
+      const deviceId = await OneSignal.User.pushSubscription.getIdAsync();
+      if (deviceId) {
+        await updateDeviceIdOnServer(userId, deviceId);
+      }
+    } catch (error) {
+      console.error('Error linking user with OneSignal:', error);
+    }
+  };
+
+  // Send device ID to server
+  const updateDeviceIdOnServer = async (userId, deviceId) => {
+    try {
+      // Backend API endpoint to update device ID
+      // Uncomment and modify as needed for your backend
+      
+      await axios.post(
+        'https://offersclub.offerplant.com/opex/api.php?task=update_customer_id',
+        { 
+          'id': parseInt(userId),
+          'fcm_token': deviceId
+        }
+      );
+      
+      console.log('Device ID updated on server for user:', userId);
+    } catch (error) {
+      console.error('Error updating device ID on server:', error);
+    }
+  };
+
+  // Add debug function to check notification status
+  const checkNotificationStatus = async () => {
+    try {
+      const isOptedIn = await OneSignal.User.pushSubscription.getOptedInAsync();
+      const deviceId = await OneSignal.User.pushSubscription.getIdAsync();
+      const token = await OneSignal.User.pushSubscription.getTokenAsync();
+      const externalId = await OneSignal.User.getExternalId();
+      
+      Alert.alert(
+        'OneSignal Status',
+        `Permission: ${notificationPermission ? 'Granted' : 'Denied'}\n` +
+        `Subscribed: ${isOptedIn ? 'Yes' : 'No'}\n` +
+        `User ID: ${externalId || 'Not set'}\n` +
+        `Device ID: ${deviceId || 'Not available'}\n` +
+        `Token: ${token ? 'Available' : 'Not available'}`
+      );
+    } catch (error) {
+      console.error('Error checking notification status:', error);
+      Alert.alert('Error', 'Failed to check notification status');
     }
   };
 
@@ -146,6 +277,7 @@ export default function DashboardScreen() {
     );
   };
 
+  // Update logout to also logout from OneSignal
   const logout = async () => {
     Alert.alert("Logout", "Are you sure you want to logout?", [
       { text: "Cancel", style: "cancel" },
@@ -153,6 +285,8 @@ export default function DashboardScreen() {
         text: "Logout",
         style: "destructive",
         onPress: async () => {
+          // Logout from OneSignal
+          await OneSignal.logout();
           await AsyncStorage.clear();
           router.replace("/");
         },
@@ -188,6 +322,28 @@ export default function DashboardScreen() {
         categoryName: category.name 
       }
     });
+  };
+
+  // Add notification permission UI to the Quick Actions section
+  const renderNotificationPermissionButton = () => {
+    return (
+      <QuickActionItem
+        icon={
+          notificationPermission 
+            ? <Ionicons name="notifications" size={28} color="#5f259f" /> 
+            : <Ionicons name="notifications-off" size={28} color="#ff4757" />
+        }
+        title={notificationPermission ? "Notifications On" : "Enable Notifications"}
+        onPress={async () => {
+          if (!notificationPermission) {
+            const result = await OneSignal.Notifications.requestPermission(true);
+            setNotificationPermission(result);
+          } else {
+            checkNotificationStatus();
+          }
+        }}
+      />
+    );
   };
 
   const CategoryItem = ({ category }) => (
@@ -266,6 +422,7 @@ export default function DashboardScreen() {
           />
         }
       >
+       {/* Notification Permission Request Button */}
         {/* Simplified Wallet Card */}
         <View style={styles.walletCard}>
           <View style={styles.walletHeader}>
@@ -439,6 +596,9 @@ export default function DashboardScreen() {
               onPress={() => router.push("/offers")}
               notification={dashboardData?.offers?.active?.toString()}
             />
+            {/* Notification permission button */}
+            {renderNotificationPermissionButton()}
+            
             <QuickActionItem
               icon={<MaterialIcons name="history" size={28} color="#5f259f" />}
               title="Transaction History"
@@ -453,11 +613,6 @@ export default function DashboardScreen() {
               icon={<FontAwesome5 name="wallet" size={24} color="#5f259f" />}
               title="Wallet Details"
               onPress={() => router.push("/profile")}
-            />
-            <QuickActionItem
-              icon={<Ionicons name="help-circle-outline" size={28} color="#5f259f" />}
-              title="Help & Support"
-              onPress={() => {}}
             />
           </View>
         </View>
@@ -528,12 +683,6 @@ export default function DashboardScreen() {
             </TouchableOpacity>
           </View>
         </View>
-
-        {/* Logout Button */}
-        {/* <TouchableOpacity style={styles.logoutCard} onPress={logout}>
-          <Ionicons name="log-out-outline" size={24} color="#ff4757" />
-          <Text style={styles.logoutText}>Sign Out</Text>
-        </TouchableOpacity> */}
 
         <View style={styles.bottomPadding} />
       </ScrollView>

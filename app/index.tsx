@@ -20,8 +20,8 @@ import {
   View,
 } from 'react-native';
 
+import './firebase';
 const { width, height } = Dimensions.get('window');
-
 export default function LoginScreen() {
   const [mobile, setMobile] = useState('');
   const [loading, setLoading] = useState(false);
@@ -30,6 +30,8 @@ export default function LoginScreen() {
   useEffect(() => {
     checkExistingSession();
   }, []);
+
+  
 
   const checkExistingSession = async () => {
     try {

@@ -234,12 +234,12 @@ export default function OTPScreen() {
               </Text>
               
               {/* Show test OTP if available */}
-              {otpSent && (
+              {/* {otpSent && (
                 <View style={styles.testOtpContainer}>
                   <Text style={styles.testOtpLabel}>Test OTP:</Text>
                   <Text style={styles.testOtpValue}>{otpSent}</Text>
                 </View>
-              )}
+              )} */}
             </View>
 
             <View style={styles.otpContainer}>
@@ -310,17 +310,17 @@ export default function OTPScreen() {
               )}
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.helpLink}>
+            {/* <TouchableOpacity style={styles.helpLink}>
               <MaterialIcons name="help-outline" size={16} color="#f0f0f0" style={styles.helpIcon} />
               <Text style={styles.helpText}>Need Help?</Text>
-            </TouchableOpacity>
+            </TouchableOpacity> */}
 
             {/* Login Type Indicator */}
-            <View style={styles.loginTypeIndicator}>
+            {/* <View style={styles.loginTypeIndicator}>
               <Text style={styles.loginTypeText}>
                 {loginType === 'merchant' ? '🏪 Merchant Login' : '👤 Customer Login'}
               </Text>
-            </View>
+            </View> */}
           </View>
         </KeyboardAvoidingView>
       </LinearGradient>

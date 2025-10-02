@@ -241,7 +241,7 @@ export default function TransactionHistoryScreen() {
 
   return (
     <View style={styles.container}>
-      <StatusBar backgroundColor="#fff" barStyle="dark-content" />
+       <StatusBar backgroundColor="#5f259f" barStyle="light-content" />
       
       {/* Header */}
       <View style={styles.header}>

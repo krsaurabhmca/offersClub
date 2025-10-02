@@ -31,7 +31,7 @@
       "associatedDomains": [
         "applinks:offersclub.offerplant.com"
       ],
-      "bundleIdentifier": "com.offerplant.offersclub"
+      "bundleIdentifier": "com.offerplant.cash"
     },
     "android": {
       "adaptiveIcon": {
@@ -63,7 +63,7 @@
           ]
         }
       ],
-      "package": "com.offerplant.offersclub",
+      "package": "com.offerplant.cash",
       "googleServicesFile": "./android/app/google-services.json"
     },
     "web": {

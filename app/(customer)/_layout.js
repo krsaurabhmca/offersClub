@@ -2,111 +2,147 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { Tabs } from "expo-router";
 import { StyleSheet, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+
+// Color palette
+const COLORS = {
+  primary: "#5f27cd",
+  gradientStart: "#6c5ce7",
+  gradientMid: "#5f27cd",
+  gradientEnd: "#341f97",
+  inactive: "#95a5a6",
+  background: "#fff",
+  white: "#fff",
+};
+
+const TabIcon = ({ name, color, size = 24, focused }: any) => (
+  <View
+    style={[
+      styles.iconContainer,
+      focused && styles.activeIconContainer,
+    ]}
+  >
+    <Ionicons name={name} size={size} color={focused ? COLORS.white : color} />
+  </View>
+);
+
+// Exclusive center QR scan floating button
+const CenterScanIcon = () => (
+  <View style={styles.centerIconContainer}>
+    <LinearGradient
+      colors={[COLORS.gradientStart, COLORS.gradientMid, COLORS.gradientEnd]}
+      style={styles.centerIconInner}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+    >
+      <MaterialCommunityIcons name="qrcode-scan" size={34} color="#fff" />
+    </LinearGradient>
+    <View style={styles.centerIconGlow} />
+  </View>
+);
 
 const _layout = () => {
   return (
-    <Tabs
-      screenOptions={{
-        tabBarActiveTintColor: "#5f27cd",
-        tabBarInactiveTintColor: "#95a5a6",
-        tabBarStyle: {
-          backgroundColor: "#fff",
-          borderTopWidth: 0,
-          elevation: 25,
-          shadowColor: "#000",
-          shadowOffset: { width: 0, height: -3 },
-          shadowOpacity: 0.08,
-          shadowRadius: 10,
-          height: 80,
-          paddingBottom: 10,
-          paddingTop: 5,
-          borderTopLeftRadius: 20,
-          borderTopRightRadius: 20,
-        },
-        tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: "600",
-          marginTop: 3,
-        },
-        tabBarIconStyle: { marginTop: 3 },
-        headerShown: false,
-      }}
-    >
-      {/* --- Home --- */}
-      <Tabs.Screen
-        name="dashboard"
-        options={{
-          title: "Home",
-          tabBarIcon: ({ color, focused }) => (
-            <View
-              style={[
-                styles.iconContainer,
-                focused && styles.activeIconContainer,
-              ]}
-            >
-              <Ionicons
-                name={focused ? "home" : "home-outline"}
-                size={24}
-                color={focused ? "#fff" : color}
-              />
-            </View>
-          ),
-        }}
-      />
-
-      {/* --- Center QR --- */}
-      <Tabs.Screen
-        name="qr-scanner"
-        options={{
-          title: "Scan",
-          tabBarIcon: () => (
-            <View style={styles.centerIconContainer}>
-              <LinearGradient
-                colors={["#6c5ce7", "#5f27cd", "#341f97"]}
-                style={styles.centerIconInner}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-              >
-                <MaterialCommunityIcons
-                  name="qrcode-scan"
-                  size={34}
-                  color="#fff"
-                />
-              </LinearGradient>
-              <View style={styles.centerIconGlow} />
-            </View>
-          ),
-          tabBarLabelStyle: {
-            fontSize: 12,
-            fontWeight: "700",
-            marginTop: -6,
-            color: "#5f27cd",
+   <SafeAreaView style={{ flex: 1 }} edges={['bottom']}>
+      <Tabs
+        screenOptions={{
+          tabBarActiveTintColor: COLORS.primary,
+          tabBarInactiveTintColor: COLORS.inactive,
+          tabBarStyle: {
+            backgroundColor: COLORS.background,
+            borderTopWidth: 0,
+            elevation: 25,
+            shadowColor: "#000",
+            shadowOffset: { width: 0, height: -3 },
+            shadowOpacity: 0.08,
+            shadowRadius: 10,
+            height: 80,
+            paddingBottom: 10,
+            paddingTop: 5,
+            borderTopLeftRadius: 20,
+            borderTopRightRadius: 20,
           },
+          tabBarLabelStyle: {
+            fontSize: 11,
+            fontWeight: "600",
+            marginTop: 3,
+          },
+          tabBarIconStyle: { marginTop: 3 },
+          headerShown: false,
         }}
-      />
+      >
 
-      {/* --- History --- */}
-      <Tabs.Screen
-        name="transaction-history"
-        options={{
-          title: "History",
-          tabBarIcon: ({ color, focused }) => (
-            <View
-              style={[
-                styles.iconContainer,
-                focused && styles.activeIconContainer,
-              ]}
-            >
-              <Ionicons
-                name={focused ? "time" : "time-outline"}
-                size={22}
-                color={focused ? "#fff" : color}
-              />
-            </View>
-          ),
-        }}
-      />
-    </Tabs>
+        {/* Home Tab */}
+        <Tabs.Screen
+          name="dashboard"
+          options={{
+            title: "Home",
+            tabBarIcon: ({ color, focused }) =>
+              TabIcon({ name: focused ? "home" : "home-outline", color, focused }),
+          }}
+        />
+
+        {/* Nearby Merchants Tab */}
+        <Tabs.Screen
+          name="nearby-merchants"
+          options={{
+            title: "Nearby Shops",
+            tabBarIcon: ({ color, focused }) =>
+              TabIcon({
+                name: focused ? "storefront" : "storefront-outline",
+                color,
+                focused,
+                size: 24,
+              }),
+          }}
+        />
+
+        {/* QR Scanner Tab (Only Big Center Button) */}
+        <Tabs.Screen
+          name="qr-scanner"
+          options={{
+            title: "Scan",
+            tabBarIcon: CenterScanIcon,
+            tabBarLabelStyle: {
+              fontSize: 12,
+              fontWeight: "700",
+              marginTop: -6,
+              color: COLORS.primary,
+            },
+          }}
+        />
+
+        {/* History */}
+        <Tabs.Screen
+          name="transaction-history"
+          options={{
+            title: "History",
+            tabBarIcon: ({ color, focused }) =>
+              TabIcon({
+                name: focused ? "time" : "time-outline",
+                color,
+                focused,
+                size: 22,
+              }),
+          }}
+        />
+
+        {/* Profile */}
+        <Tabs.Screen
+          name="profile"
+          options={{
+            title: "Profile",
+            tabBarIcon: ({ color, focused }) =>
+              TabIcon({
+                name: focused ? "person" : "person-outline",
+                color,
+                focused,
+                size: 22,
+              }),
+          }}
+        />
+      </Tabs>
+    </SafeAreaView>
   );
 };
 
@@ -122,7 +158,7 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
   },
   activeIconContainer: {
-    backgroundColor: "#5f27cd",
+    backgroundColor: COLORS.primary,
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.25,
     shadowRadius: 5,
@@ -142,12 +178,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     elevation: 12,
-    shadowColor: "#5f27cd",
+    shadowColor: COLORS.primary,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.4,
     shadowRadius: 15,
     borderWidth: 4,
-    borderColor: "#fff",
+    borderColor: COLORS.background,
   },
   centerIconGlow: {
     position: "absolute",

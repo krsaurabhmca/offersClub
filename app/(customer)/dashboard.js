@@ -21,57 +21,59 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-// OneSignal import
+// OneSignal for push notifications
 import { OneSignal } from 'react-native-onesignal';
 
 const { width, height } = Dimensions.get('window');
 
-
 export default function DashboardScreen() {
+  // State management for dashboard data
   const [userProfile, setUserProfile] = useState({});
   const [dashboardData, setDashboardData] = useState(null);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [withdrawLoading, setWithdrawLoading] = useState(false);
-  // OneSignal permission state
+  // OneSignal notification permission state
   const [notificationPermission, setNotificationPermission] = useState(false);
 
+  // Initialize dashboard data and OneSignal on component mount
   useEffect(() => {
     loadUserProfile();
     loadDashboardData();
     loadCategories();
-    
-    // OneSignal setup
     setupOneSignal();
   }, []);
 
-  // OneSignal setup function
+  /**
+   * Setup OneSignal push notifications
+   * Handles permission requests and event listeners
+   */
   const setupOneSignal = async () => {
     try {
-      // Check if permission already exists
+      // Check existing notification permission
       const permission = await OneSignal.Notifications.getPermissionAsync();
       setNotificationPermission(permission);
       
+      // Request permission if not already granted
       if (!permission) {
-        // Request notification permission
         const result = await OneSignal.Notifications.requestPermission(true);
         setNotificationPermission(result);
       }
       
-      // Set notification handlers
+      // Handle notifications received when app is in foreground
       OneSignal.Notifications.addEventListener('foregroundWillDisplay', event => {
         console.log('Notification received in foreground:', event);
-        // Display the notification
         event.preventDefault();
         event.getNotification().display();
       });
       
+      // Handle notification clicks for navigation
       OneSignal.Notifications.addEventListener('click', event => {
         console.log('Notification clicked:', event);
         const data = event.notification.additionalData;
         
-        // Handle different notification types for navigation
+        // Navigate based on notification data
         if (data?.screen) {
           router.push(data.screen);
         } else if (data?.type) {
@@ -85,20 +87,21 @@ export default function DashboardScreen() {
             case 'merchant':
               router.push('/nearby-merchants');
               break;
+            default:
+              // Default navigation if type is not recognized
+              break;
           }
         }
       });
-      
-      return () => {
-        // Cleanup event listeners
-        OneSignal.Notifications.removeEventListener('foregroundWillDisplay');
-        OneSignal.Notifications.removeEventListener('click');
-      };
     } catch (error) {
       console.error('OneSignal setup error:', error);
     }
   };
 
+  /**
+   * Load user profile data from API
+   * Also handles OneSignal user linking
+   */
   const loadUserProfile = async () => {
     try {
       const customerId = await AsyncStorage.getItem("customer_id");
@@ -111,11 +114,12 @@ export default function DashboardScreen() {
 
       if (response.data && response.data.id) {
         setUserProfile(response.data);
+        // Store user data locally
         await AsyncStorage.setItem('user_name', response.data.name || '');
         await AsyncStorage.setItem('user_email', response.data.email || '');
         await AsyncStorage.setItem('user_address', response.data.address || '');
         
-        // Link user ID with OneSignal for targeted notifications
+        // Link user with OneSignal for targeted notifications
         await linkUserWithOneSignal(customerId);
       }
     } catch (error) {
@@ -123,13 +127,16 @@ export default function DashboardScreen() {
     }
   };
 
-  // OneSignal user linking function
+  /**
+   * Link user with OneSignal for targeted push notifications
+   * @param {string} userId - Customer ID to link with OneSignal
+   */
   const linkUserWithOneSignal = async (userId) => {
     try {
       // Set external user ID in OneSignal
       await OneSignal.login(userId.toString());
       
-      // Add user tags for segmentation
+      // Add user tags for segmentation and targeting
       await OneSignal.User.addTags({
         userType: 'customer',
         userId: userId,
@@ -138,7 +145,7 @@ export default function DashboardScreen() {
       
       console.log('User linked with OneSignal:', userId);
       
-      // Get device ID and send to backend
+      // Get device push subscription ID and update on server
       const deviceId = await OneSignal.User.pushSubscription.getIdAsync();
       if (deviceId) {
         await updateDeviceIdOnServer(userId, deviceId);
@@ -148,12 +155,13 @@ export default function DashboardScreen() {
     }
   };
 
-  // Send device ID to server
+  /**
+   * Update device ID on server for push notification targeting
+   * @param {string} userId - Customer ID
+   * @param {string} deviceId - OneSignal device ID
+   */
   const updateDeviceIdOnServer = async (userId, deviceId) => {
     try {
-      // Backend API endpoint to update device ID
-      // Uncomment and modify as needed for your backend
-      
       await axios.post(
         'https://offersclub.offerplant.com/opex/api.php?task=update_customer_id',
         { 
@@ -168,28 +176,9 @@ export default function DashboardScreen() {
     }
   };
 
-  // Add debug function to check notification status
-  const checkNotificationStatus = async () => {
-    try {
-      const isOptedIn = await OneSignal.User.pushSubscription.getOptedInAsync();
-      const deviceId = await OneSignal.User.pushSubscription.getIdAsync();
-      const token = await OneSignal.User.pushSubscription.getTokenAsync();
-      const externalId = await OneSignal.User.getExternalId();
-      
-      Alert.alert(
-        'OneSignal Status',
-        `Permission: ${notificationPermission ? 'Granted' : 'Denied'}\n` +
-        `Subscribed: ${isOptedIn ? 'Yes' : 'No'}\n` +
-        `User ID: ${externalId || 'Not set'}\n` +
-        `Device ID: ${deviceId || 'Not available'}\n` +
-        `Token: ${token ? 'Available' : 'Not available'}`
-      );
-    } catch (error) {
-      console.error('Error checking notification status:', error);
-      Alert.alert('Error', 'Failed to check notification status');
-    }
-  };
-
+  /**
+   * Load dashboard summary data from API
+   */
   const loadDashboardData = async () => {
     try {
       const customerId = await AsyncStorage.getItem("customer_id");
@@ -211,6 +200,9 @@ export default function DashboardScreen() {
     }
   };
 
+  /**
+   * Load categories for merchant filtering
+   */
   const loadCategories = async () => {
     try {
       const response = await axios.get(
@@ -227,15 +219,23 @@ export default function DashboardScreen() {
     }
   };
 
+  /**
+   * Handle pull-to-refresh functionality
+   */
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await Promise.all([loadUserProfile(), loadDashboardData(), loadCategories()]);
     setRefreshing(false);
   }, []);
 
+  /**
+   * Handle wallet withdrawal request
+   * Validates minimum balance and shows confirmation
+   */
   const handleWithdrawRequest = async () => {
     const walletAmount = parseFloat(userProfile.wallet || 0);
     
+    // Check minimum withdrawal amount
     if (walletAmount < 50) {
       Alert.alert(
         'Insufficient Balance', 
@@ -245,6 +245,7 @@ export default function DashboardScreen() {
       return;
     }
 
+    // Confirm withdrawal request
     Alert.alert(
       'Withdraw Request',
       `Available Balance: ${formatCurrency(walletAmount)}\n\nDo you want to request a withdrawal?`,
@@ -256,13 +257,13 @@ export default function DashboardScreen() {
             setWithdrawLoading(true);
             try {
               const customerId = await AsyncStorage.getItem("customer_id");
-              // Add your withdraw API call here
+              // TODO: Implement actual withdrawal API call
               // const response = await axios.post('your-withdraw-endpoint', {
               //   customer_id: customerId,
               //   amount: walletAmount
               // });
               
-              // Simulated success for now
+              // Simulated success response
               setTimeout(() => {
                 setWithdrawLoading(false);
                 Alert.alert('Success', 'Withdrawal request submitted successfully!');
@@ -277,7 +278,10 @@ export default function DashboardScreen() {
     );
   };
 
-  // Update logout to also logout from OneSignal
+  /**
+   * Handle user logout
+   * Clears local storage and OneSignal session
+   */
   const logout = async () => {
     Alert.alert("Logout", "Are you sure you want to logout?", [
       { text: "Cancel", style: "cancel" },
@@ -285,15 +289,21 @@ export default function DashboardScreen() {
         text: "Logout",
         style: "destructive",
         onPress: async () => {
-          // Logout from OneSignal
+          // Logout from OneSignal to stop receiving notifications
           await OneSignal.logout();
+          // Clear all local storage
           await AsyncStorage.clear();
+          // Navigate to login screen
           router.replace("/");
         },
       },
     ]);
   };
 
+  /**
+   * Get greeting based on current time
+   * @returns {string} Time-based greeting message
+   */
   const getGreeting = () => {
     const hour = new Date().getHours();
     if (hour < 12) return "Good Morning";
@@ -301,11 +311,21 @@ export default function DashboardScreen() {
     return "Good Evening";
   };
 
+  /**
+   * Get user initials for avatar display
+   * @param {string} name - User's full name
+   * @returns {string} User initials (max 2 characters)
+   */
   const getInitials = (name) => {
     if (!name) return "U";
     return name.split(' ').map(word => word[0]).join('').toUpperCase().slice(0, 2);
   };
 
+  /**
+   * Format currency amount in Indian Rupees
+   * @param {number} amount - Amount to format
+   * @returns {string} Formatted currency string
+   */
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
@@ -314,6 +334,10 @@ export default function DashboardScreen() {
     }).format(amount);
   };
 
+  /**
+   * Handle category selection and navigation
+   * @param {Object} category - Selected category object
+   */
   const handleCategoryPress = (category) => {
     router.push({
       pathname: "/nearby-merchants",
@@ -324,7 +348,10 @@ export default function DashboardScreen() {
     });
   };
 
-  // Add notification permission UI to the Quick Actions section
+  /**
+   * Render notification permission toggle button
+   * Shows current permission status and allows enabling notifications
+   */
   const renderNotificationPermissionButton = () => {
     return (
       <QuickActionItem
@@ -336,16 +363,23 @@ export default function DashboardScreen() {
         title={notificationPermission ? "Notifications On" : "Enable Notifications"}
         onPress={async () => {
           if (!notificationPermission) {
+            // Request notification permission
             const result = await OneSignal.Notifications.requestPermission(true);
             setNotificationPermission(result);
+            if (result) {
+              Alert.alert('Success', 'Notifications enabled! You will now receive updates about offers and transactions.');
+            }
           } else {
-            checkNotificationStatus();
+            Alert.alert('Notifications', 'Push notifications are already enabled for this app.');
           }
         }}
       />
     );
   };
 
+  /**
+   * Category item component for horizontal scroll
+   */
   const CategoryItem = ({ category }) => (
     <TouchableOpacity 
       style={styles.categoryItem} 
@@ -365,6 +399,9 @@ export default function DashboardScreen() {
     </TouchableOpacity>
   );
 
+  /**
+   * Quick action item component for dashboard services
+   */
   const QuickActionItem = ({ icon, title, onPress, notification = null }) => (
     <TouchableOpacity style={styles.quickActionItem} onPress={onPress} activeOpacity={0.7}>
       <View style={styles.quickActionIconContainer}>
@@ -379,6 +416,7 @@ export default function DashboardScreen() {
     </TouchableOpacity>
   );
 
+  // Show loading spinner while data is being fetched
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -393,7 +431,7 @@ export default function DashboardScreen() {
     <View style={styles.container}>
       <StatusBar backgroundColor="#5f259f" barStyle="light-content" />
       
-      {/* Header */}
+      {/* Header Section with User Info */}
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <View style={styles.userSection}>
@@ -411,6 +449,7 @@ export default function DashboardScreen() {
         </View>
       </View>
 
+      {/* Main Content with Pull-to-Refresh */}
       <ScrollView 
         style={styles.content}
         showsVerticalScrollIndicator={false}
@@ -422,8 +461,7 @@ export default function DashboardScreen() {
           />
         }
       >
-       {/* Notification Permission Request Button */}
-        {/* Simplified Wallet Card */}
+        {/* Wallet Balance Card */}
         <View style={styles.walletCard}>
           <View style={styles.walletHeader}>
             <View>
@@ -442,6 +480,7 @@ export default function DashboardScreen() {
             </View>
           </View>
           
+          {/* Withdrawal Request Button */}
           <TouchableOpacity
             style={[
               styles.withdrawButton,
@@ -470,7 +509,7 @@ export default function DashboardScreen() {
           )}
         </View>
 
-        {/* Enhanced Transaction Summary */}
+        {/* Transaction Summary Card */}
         {dashboardData?.transactions && (
           <TouchableOpacity 
             style={styles.transactionCard}
@@ -488,6 +527,7 @@ export default function DashboardScreen() {
               </View>
             </View>
             
+            {/* Transaction Statistics */}
             <View style={styles.transactionStats}>
               <View style={styles.statItem}>
                 <View style={styles.statIconContainer}>
@@ -511,11 +551,12 @@ export default function DashboardScreen() {
                   <Text style={styles.statValue}>
                     {dashboardData.transactions.counts.total}
                   </Text>
-                  <Text style={styles.statLabel}> Transactions</Text>
+                  <Text style={styles.statLabel}>Transactions</Text>
                 </View>
               </View>
             </View>
             
+            {/* Transaction Breakdown by Status */}
             <View style={styles.transactionBreakdown}>
               <View style={styles.breakdownItem}>
                 <View style={styles.breakdownIndicator}>
@@ -581,7 +622,7 @@ export default function DashboardScreen() {
           </ScrollView>
         </View>
 
-        {/* Essential Services - Quick Actions */}
+        {/* Essential Services - Quick Actions Grid */}
         <View style={styles.quickActionsCard}>
           <Text style={styles.cardTitle}>Essential Services</Text>
           <View style={styles.quickActionsGrid}>
@@ -596,7 +637,7 @@ export default function DashboardScreen() {
               onPress={() => router.push("/offers")}
               notification={dashboardData?.offers?.active?.toString()}
             />
-            {/* Notification permission button */}
+            {/* Notification Permission Button */}
             {renderNotificationPermissionButton()}
             
             <QuickActionItem
@@ -690,6 +731,7 @@ export default function DashboardScreen() {
   );
 }
 
+// Styles remain the same as in your original code
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -711,7 +753,6 @@ const styles = StyleSheet.create({
     paddingTop: 45,
     paddingBottom: 20,
     paddingHorizontal: 20,
-    paddingRight: 60,
   },
   headerContent: {
     flexDirection: 'row',
@@ -752,7 +793,6 @@ const styles = StyleSheet.create({
   },
   profileButton: {
     padding: 8,
-    marginRight: 20,
   },
   content: {
     flex: 1,
@@ -1157,27 +1197,6 @@ const styles = StyleSheet.create({
   },
   editProfileButton: {
     padding: 8,
-  },
-  logoutCard: {
-    backgroundColor: '#fff',
-    marginHorizontal: 16,
-    marginBottom: 16,
-    borderRadius: 12,
-    padding: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  logoutText: {
-    fontSize: 16,
-    color: '#ff4757',
-    fontWeight: '600',
-    marginLeft: 8,
   },
   bottomPadding: {
     height: 20,

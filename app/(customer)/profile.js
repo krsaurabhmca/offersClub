@@ -10,6 +10,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Modal, // Added Modal import
   RefreshControl,
   ScrollView,
   StatusBar,
@@ -20,6 +21,86 @@ import {
   View,
 } from 'react-native';
 
+// DeleteConfirmationModal Component (moved outside the main component)
+const DeleteConfirmationModal = ({ visible, onClose, onConfirm, isLoading }) => {
+  const [confirmText, setConfirmText] = useState('');
+  const confirmationKeyword = "DELETE";
+  
+  return (
+    <Modal
+      animationType="fade"
+      transparent={true}
+      visible={visible}
+      onRequestClose={onClose}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <Ionicons name="warning" size={28} color="#FF3B30" />
+            <Text style={styles.modalTitle}>Delete Account</Text>
+          </View>
+          
+          <Text style={styles.modalText}>
+            You are about to delete your profile information. This action cannot be undone.
+          </Text>
+          
+          <View style={styles.riskContainer}>
+            <Text style={styles.riskTitle}>You understand that:</Text>
+            <View style={styles.riskItem}>
+              <Ionicons name="remove-circle" size={16} color="#FF3B30" />
+              <Text style={styles.riskText}>Your bank account details will be removed</Text>
+            </View>
+            <View style={styles.riskItem}>
+              <Ionicons name="remove-circle" size={16} color="#FF3B30" />
+              <Text style={styles.riskText}>Payment services may be disrupted</Text>
+            </View>
+            <View style={styles.riskItem}>
+              <Ionicons name="remove-circle" size={16} color="#FF3B30" />
+              <Text style={styles.riskText}>This action cannot be reversed</Text>
+            </View>
+          </View>
+          
+          <Text style={styles.confirmInstructionText}>
+            Type "{confirmationKeyword}" to confirm deletion:
+          </Text>
+          
+          <TextInput
+            style={styles.confirmInput}
+            value={confirmText}
+            onChangeText={setConfirmText}
+            placeholder={`Type ${confirmationKeyword} here`}
+          />
+          
+          <View style={styles.modalButtonRow}>
+            <TouchableOpacity
+              style={styles.cancelModalButton}
+              onPress={onClose}
+              disabled={isLoading}
+            >
+              <Text style={styles.cancelModalButtonText}>Cancel</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[
+                styles.deleteModalButton,
+                (confirmText !== confirmationKeyword) && styles.deleteModalButtonDisabled
+              ]}
+              onPress={onConfirm}
+              disabled={confirmText !== confirmationKeyword || isLoading}
+            >
+              {isLoading ? (
+                <ActivityIndicator size="small" color="white" />
+              ) : (
+                <Text style={styles.deleteModalButtonText}>Delete My Data</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
 export default function ProfileScreen() {
   const [userProfile, setUserProfile] = useState({});
   const [name, setName] = useState('');
@@ -29,6 +110,8 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
 
   useEffect(() => {
     loadUserProfile();
@@ -72,47 +155,47 @@ export default function ProfileScreen() {
     setRefreshing(false);
   }, []);
 
- const saveProfile = async () => {
-  if (!name.trim()) {
-    Alert.alert('Error', 'Please enter your full name');
-    return;
-  }
-
-  if (!email.trim() || !email.includes('@')) {
-    Alert.alert('Error', 'Please enter a valid email address');
-    return;
-  }
-
-  setSaving(true);
-  try {
-    const response = await axios.post(
-      'https://offersclub.offerplant.com/opex/api.php?task=update_customer_profile',
-      {
-        id: await AsyncStorage.getItem('customer_id'),
-        name: name.trim(),
-        email: email.trim(),
-        address: address?.trim() || "",
-      }
-    );
-
-    if (response.data?.status === "success") {
-      // Save locally only after API success
-      await AsyncStorage.setItem('user_name', name.trim());
-      await AsyncStorage.setItem('user_email', email.trim());
-      await AsyncStorage.setItem('user_address', address?.trim() || "");
-
-      setIsEditing(false);
-      Alert.alert('Success', 'Profile updated successfully');
-    } else {
-      Alert.alert('Error', response.data?.message || 'Failed to update profile');
+  const saveProfile = async () => {
+    if (!name.trim()) {
+      Alert.alert('Error', 'Please enter your full name');
+      return;
     }
-  } catch (error) {
-    Alert.alert('Error', 'Failed to save profile');
-    console.error(error);
-  } finally {
-    setSaving(false);
-  }
-};
+
+    if (!email.trim() || !email.includes('@')) {
+      Alert.alert('Error', 'Please enter a valid email address');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const response = await axios.post(
+        'https://offersclub.offerplant.com/opex/api.php?task=update_customer_profile',
+        {
+          id: await AsyncStorage.getItem('customer_id'),
+          name: name.trim(),
+          email: email.trim(),
+          address: address?.trim() || "",
+        }
+      );
+
+      if (response.data?.status === "success") {
+        // Save locally only after API success
+        await AsyncStorage.setItem('user_name', name.trim());
+        await AsyncStorage.setItem('user_email', email.trim());
+        await AsyncStorage.setItem('user_address', address?.trim() || "");
+
+        setIsEditing(false);
+        Alert.alert('Success', 'Profile updated successfully');
+      } else {
+        Alert.alert('Error', response.data?.message || 'Failed to update profile');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to save profile');
+      console.error(error);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const logout = async () => {
     Alert.alert(
@@ -130,6 +213,49 @@ export default function ProfileScreen() {
         },
       ]
     );
+  };
+
+  const handleDeleteProfile = async () => {
+    try {
+      setDeleting(true);
+      
+      // Get customer_id from AsyncStorage
+      const customerId = await AsyncStorage.getItem('customer_id');
+      
+      const response = await axios.post(
+        'https://offersclub.offerplant.com/opex/api.php?task=delete_customer_profile',
+        { customer_id: customerId }
+      );
+      
+      setDeleting(false);
+      setDeleteModalVisible(false);
+      
+      if (response.data && response.data.status === 'success') {
+        // Clear AsyncStorage
+        await AsyncStorage.clear();
+        
+        Alert.alert(
+          'Profile Deleted',
+          'Your profile has been successfully deleted.',
+          [
+            { 
+              text: 'OK', 
+              onPress: () => {
+                // Navigate to sign-in screen
+                router.replace('/');
+              } 
+            }
+          ]
+        );
+      } else {
+        Alert.alert('Error', 'Failed to delete profile. Please try again later.');
+      }
+    } catch (error) {
+      setDeleting(false);
+      setDeleteModalVisible(false);
+      Alert.alert('Error', 'An error occurred while deleting profile');
+      console.error(error);
+    }
   };
 
   const getInitials = (name) => {
@@ -232,16 +358,6 @@ export default function ProfileScreen() {
           <Text style={styles.sectionTitle}>Account Information</Text>
           
           <View style={styles.infoGrid}>
-            {/* <View style={styles.infoItem}>
-              <View style={styles.infoIcon}>
-                <Feather name="hash" size={18} color="#5f259f" />
-              </View>
-              <View style={styles.infoContent}>
-                <Text style={styles.infoLabel}>Customer ID</Text>
-                <Text style={styles.infoValue}>{userProfile.id}</Text>
-              </View>
-            </View> */}
-
             <View style={styles.infoItem}>
               <View style={styles.infoIcon}>
                 <Ionicons name="calendar-outline" size={18} color="#5f259f" />
@@ -359,13 +475,13 @@ export default function ProfileScreen() {
         <View style={styles.settingsCard}>
           <Text style={styles.sectionTitle}>Settings</Text>
           
-          <TouchableOpacity style={styles.settingsItem}>
+          <TouchableOpacity style={styles.settingsItem} onPress={() => router.push('/AccountScreen')}>
             <View style={styles.settingsIcon}>
               <Ionicons name="shield-checkmark-outline" size={20} color="#5f259f" />
             </View>
             <View style={styles.settingsContent}>
-              <Text style={styles.settingsTitle}>Security Settings</Text>
-              <Text style={styles.settingsSubtitle}>Change password & security options</Text>
+              <Text style={styles.settingsTitle}>Bank Details</Text>
+              <Text style={styles.settingsSubtitle}>Add or update bank details</Text>
             </View>
             <Ionicons name="chevron-forward" size={18} color="#ccc" />
           </TouchableOpacity>
@@ -404,6 +520,21 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* Delete Account Button */}
+        <View style={styles.dangerZone}>
+          <Text style={styles.dangerZoneTitle}>Danger Zone</Text>
+          <TouchableOpacity 
+            style={styles.deleteButton}
+            onPress={() => setDeleteModalVisible(true)}
+          >
+            <Ionicons name="trash-outline" size={20} color="white" />
+            <Text style={styles.deleteButtonText}>Delete My Profile</Text>
+          </TouchableOpacity>
+          <Text style={styles.dangerZoneDescription}>
+            This will permanently delete your all account information from our system.
+          </Text>
+        </View>
+
         {/* Logout Button */}
         <TouchableOpacity style={styles.logoutButton} onPress={logout}>
           <Ionicons name="log-out-outline" size={20} color="#ff4757" />
@@ -412,6 +543,14 @@ export default function ProfileScreen() {
 
         <View style={styles.bottomPadding} />
       </ScrollView>
+      
+      {/* Add the Delete Confirmation Modal */}
+      <DeleteConfirmationModal 
+        visible={deleteModalVisible}
+        onClose={() => setDeleteModalVisible(false)}
+        onConfirm={handleDeleteProfile}
+        isLoading={deleting}
+      />
     </View>
   );
 }
@@ -451,6 +590,7 @@ const styles = StyleSheet.create({
   },
   editButton: {
     padding: 8,
+    paddingRight:20,
   },
   content: {
     flex: 1,
@@ -472,6 +612,7 @@ const styles = StyleSheet.create({
   avatarContainer: {
     position: 'relative',
     marginBottom: 16,
+
   },
   avatar: {
     width: 80,
@@ -708,5 +849,149 @@ const styles = StyleSheet.create({
   },
   bottomPadding: {
     height: 20,
+  },
+  // Danger zone styles
+  dangerZone: {
+    margin: 16,
+    marginTop: 0,
+    padding: 16,
+    backgroundColor: '#FFF5F5',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FFDDDD',
+  },
+  dangerZoneTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#FF3B30',
+    marginBottom: 12,
+  },
+  deleteButton: {
+    backgroundColor: '#FF3B30',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 14,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  deleteButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 16,
+    marginLeft: 8,
+  },
+  dangerZoneDescription: {
+    fontSize: 14,
+    color: '#666',
+    lineHeight: 20,
+  },
+  
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    width: '90%',
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 20,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#FF3B30',
+    marginLeft: 10,
+  },
+  modalText: {
+    fontSize: 16,
+    color: '#333',
+    marginBottom: 16,
+    lineHeight: 22,
+  },
+  riskContainer: {
+    backgroundColor: '#FFF5F5',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  riskTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 10,
+  },
+  riskItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  riskText: {
+    fontSize: 14,
+    color: '#333',
+    marginLeft: 8,
+  },
+  confirmInstructionText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#333',
+    marginBottom: 8,
+  },
+  confirmInput: {
+    backgroundColor: '#F8F8F8',
+    borderWidth: 1,
+    borderColor: '#DDD',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    marginBottom: 16,
+  },
+  modalButtonRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  cancelModalButton: {
+    backgroundColor: '#F5F5F5',
+    padding: 14,
+    borderRadius: 8,
+    flex: 1,
+    marginRight: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelModalButtonText: {
+    color: '#444',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  deleteModalButton: {
+    backgroundColor: '#FF3B30',
+    padding: 14,
+    borderRadius: 8,
+    flex: 1,
+    marginLeft: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteModalButtonDisabled: {
+    backgroundColor: '#FFACA7',
+  },
+  deleteModalButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 16,
   },
 });

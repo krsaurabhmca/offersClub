@@ -1,130 +1,136 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import { useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Dimensions,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  Vibration,
-  View,
+    ActivityIndicator,
+    Alert,
+    Dimensions,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    Vibration,
+    View,
 } from "react-native";
-
 const { width } = Dimensions.get("window");
 
-export default function QRScannerScreen() {
+export default function updateQR() {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
   const [validating, setValidating] = useState(false);
 
- const extractQRCode = (data: string) => {
+  // ✅ Validate if QR code is a UPI QR format
+  const isValidUPI = (data: string) => {
+    try {
+      // Example UPI format: upi://pay?pa=merchant@upi&pn=MerchantName&am=100&cu=INR
+      if (data.startsWith("upi://pay")) {
+        const url = new URL(data);
+        const pa = url.searchParams.get("pa"); // Payee Address
+        const pn = url.searchParams.get("pn"); // Payee Name
+        return pa && pn ? true : false;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  };
+
+  // ✅ Extract Merchant QR or UPI ID
+  const extractUPI = (data: string) => {
+    try {
+      const url = new URL(data);
+      //return url.searchParams.get("pa");
+      if(url.searchParams.get("pa"))
+        {
+          return url;  
+        } // Merchant VPA (UPI ID)
+    } catch {
+      return null;
+    }
+  };
+
+
+// ✅ Update merchant QR code API
+const updateMerchantQR = async (upiId: string) => {
   try {
-    // ✅ Case 1: Your website QR format
-    if (
-      data.includes("offersclub.offerplant.com") &&
-      data.includes("qr_code=")
-    ) {
-      const url = new URL(data);
-      return url.searchParams.get("qr_code");
+    const merchantId = await AsyncStorage.getItem("merchant_id");
+
+    if (!merchantId) {
+      Alert.alert("Error", "Merchant ID not found. Please login again.");
+      setScanned(false);
+      return;
     }
 
-    // ✅ Case 2: JSON QR format
-    if (data.startsWith("{")) {
-      const qrData = JSON.parse(data);
-      return (
-        qrData.qr_code || qrData.merchant_id || qrData.merchantId || qrData.id
+    setValidating(true);
+
+    const response = await axios.post(
+      "https://offersclub.offerplant.com/opex/api.php?task=update_merchant_profile",
+      { qr_code: upiId, id: merchantId }
+    );
+    console.log("Update QR Response:", response.data);
+    if (response.data?.status === "success") {
+      Alert.alert("✅ QR Updated", "Merchant QR code updated successfully!", [
+        { text: "OK", onPress: () => router.back() },
+      ]);
+    } else {
+      Alert.alert(
+        "Update Failed",
+        response.data?.message || "Something went wrong!"
       );
+      setScanned(false);
     }
-
-    // ✅ Case 3: UPI QR format (upi://pay?pa=merchant@upi)
-    if (data.startsWith("upi://pay")) {
-      const url = new URL(data);
-      const upiId = url.searchParams.get("pa"); // UPI Virtual Payment Address
-      return upiId; // we’ll treat UPI ID as merchant QR
-    }
-
-    // ✅ Case 4: UUID format
-    const uuidPattern =
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (uuidPattern.test(data)) return data;
-
-    // ✅ Case 5: Numeric merchant ID
-    const merchantId = parseInt(data);
-    if (!isNaN(merchantId)) return merchantId.toString();
-
-    return null;
-  } catch {
-    return null;
+  } catch (error) {
+    console.error("Merchant QR update error:", error);
+    Alert.alert("Error", "Failed to update merchant QR. Try again.");
+    setScanned(false);
+  } finally {
+    setValidating(false);
   }
 };
 
 
-  const validateMerchant = async (qrCode: string) => {
-    try {
-      setValidating(true);
-      const response = await axios.post(
-        "https://offersclub.offerplant.com/opex/api.php?task=get_merchant_profile_by_qr",
-        { qr_code: qrCode }
-      );
-      return response.data?.id ? response.data : null;
-    } catch (error) {
-      console.error("Merchant validation error:", error);
-      return null;
-    } finally {
-      setValidating(false);
-    }
-  };
-
-  const handleBarCodeScanned = async ({
-    data,
-  }: {
-    type: string;
-    data: string;
-  }) => {
+  // ✅ Handle scanned QR
+  const handleBarCodeScanned = async ({ data }: { type: string; data: string }) => {
     if (scanned || validating) return;
 
     setScanned(true);
     Vibration.vibrate(100);
 
-    const qrCode = extractQRCode(data);
-    if (!qrCode) {
-      Alert.alert("Invalid QR Code", "No merchant info found.", [
+    if (!isValidUPI(data)) {
+      Alert.alert("❌ Invalid QR Code", "Please scan a valid UPI QR Code.", [
         { text: "Try Again", onPress: () => setScanned(false) },
       ]);
       return;
     }
 
-    const merchantData = await validateMerchant(qrCode);
-
-    if (!merchantData) {
-      Alert.alert("Invalid Merchant", "Merchant not found.", [
+    const upiId = extractUPI(data);
+    if (!upiId) {
+      Alert.alert("Error", "Unable to extract UPI ID from QR code.", [
         { text: "Try Again", onPress: () => setScanned(false) },
       ]);
       return;
     }
 
-    if (merchantData.status !== "ACTIVE") {
-      Alert.alert("Merchant Inactive", "Merchant is currently inactive.", [
-        { text: "Try Again", onPress: () => setScanned(false) },
-      ]);
-      return;
-    }
-
-    router.push({
-      pathname: "/qr-payment",
-      params: {
-        merchantData: JSON.stringify(merchantData),
-        qrCode,
-      },
-    });
+    // Confirm update
+    Alert.alert(
+      "Confirm Update",
+      `Do you want to update New merchant QR `, //to:\n\n${upiId}?
+      [
+        { text: "Cancel", style: "cancel", onPress: () => setScanned(false) },
+        {
+          text: "Yes, Update",
+          onPress: async () => {
+            await updateMerchantQR(upiId);
+          },
+        },
+      ]
+    );
   };
 
-  // Handle permissions
+  // Permissions UI
   if (!permission) {
     return (
       <LinearGradient colors={["#667eea", "#764ba2"]} style={styles.container}>
@@ -157,7 +163,7 @@ export default function QRScannerScreen() {
     <View style={styles.container}>
       <CameraView
         style={styles.camera}
-        facing="back" // ✅ Fixed: Use string instead of CameraType.back
+        facing="back"
         onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
         torch={torchOn ? "on" : "off"}
         barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
@@ -173,7 +179,7 @@ export default function QRScannerScreen() {
           >
             <Text style={styles.backButtonText}>← Back</Text>
           </TouchableOpacity>
-          <Text style={styles.title}>Scan QR Code</Text>
+          <Text style={styles.title}>Scan UPI QR</Text>
           <TouchableOpacity
             style={styles.flashButton}
             onPress={() => setTorchOn((prev) => !prev)}
@@ -195,7 +201,7 @@ export default function QRScannerScreen() {
                 <View style={styles.validatingOverlay}>
                   <ActivityIndicator size="large" color="#fff" />
                   <Text style={styles.validatingText}>
-                    Validating merchant...
+                    Updating Merchant QR...
                   </Text>
                 </View>
               )}
@@ -209,10 +215,10 @@ export default function QRScannerScreen() {
           style={styles.footer}
         >
           <Text style={styles.instructionText}>
-            Position the QR code within the frame
+            Position the UPI QR inside the frame
           </Text>
           <Text style={styles.subInstructionText}>
-            The camera will automatically scan and validate the merchant
+            Only valid UPI QR codes are accepted
           </Text>
 
           {scanned && !validating && (
@@ -229,7 +235,7 @@ export default function QRScannerScreen() {
   );
 }
 
-// ... styles remain the samer
+// ✅ Styles (same as before)
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#000" },
   camera: { flex: 1 },

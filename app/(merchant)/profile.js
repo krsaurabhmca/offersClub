@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
+import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -145,7 +146,7 @@ const BusinessProfileScreen = () => {
       
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity>
+        <TouchableOpacity onPress={() => {router.back()}}>
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Business Profile</Text>
@@ -298,6 +299,18 @@ const BusinessProfileScreen = () => {
             </TouchableOpacity>
           </View>
         )}
+
+         <TouchableOpacity
+              style={[styles.button, styles.saveButton,{backgroundColor: '#e51f78ff', marginBottom: 30}]}
+              onPress={() => router.push('/updateQr')}
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Text style={styles.saveButtonText}>Change QR Code</Text>
+              )}
+            </TouchableOpacity>
       </ScrollView>
 
       {/* Category Modal */}

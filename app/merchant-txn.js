@@ -1,5 +1,6 @@
 // screens/TransactionsScreen.jsx
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
@@ -32,9 +33,10 @@ const TransactionsScreen = () => {
 
   // Fetch transactions
   const fetchTransactions = async () => {
+    const merchantId = await AsyncStorage.getItem('merchant_id'); // Replace with dynamic merchant ID as needed
     try {
       const response = await axios.post(`${API_BASE_URL}?task=merchant_transactions`, {
-        merchant_id: "5"
+        merchant_id: merchantId
       });
       
       if (response.data.status === 'success') {
@@ -69,7 +71,7 @@ const TransactionsScreen = () => {
               : txn
           )
         );
-        Alert.alert('Success', `Transaction ${status.toLowerCase()}ed successfully`);
+        //Alert.alert('Success', `Transaction ${status.toLowerCase()}ed successfully`);
       } else {
         Alert.alert('Error', 'Failed to update transaction');
       }
@@ -280,7 +282,7 @@ const TransactionsScreen = () => {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
-         <StatusBar backgroundColor="#5f259f" barStyle="light-content" />
+         <StatusBar backgroundColor="#5f259f" barStyle="dark-content" />
           <ActivityIndicator size="large" color="#007AFF" />
           <Text style={styles.loadingText}>Loading transactions...</Text>
         </View>
@@ -289,11 +291,11 @@ const TransactionsScreen = () => {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
       
       <View style={styles.header}>
-       <StatusBar backgroundColor="#5f259f" barStyle="light-content" />
+       <StatusBar backgroundColor="#5f259f" barStyle="dark-content" />
         <TouchableOpacity onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={24} color="#000" />
         </TouchableOpacity>

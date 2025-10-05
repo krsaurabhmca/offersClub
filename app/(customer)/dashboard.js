@@ -139,7 +139,7 @@ export default function DashboardScreen() {
       // Add user tags for segmentation and targeting
       await OneSignal.User.addTags({
         userType: 'customer',
-        userId: userId,
+        customer_id: userId,
         wallet: userProfile.wallet || '0'
       });
       
@@ -163,7 +163,7 @@ export default function DashboardScreen() {
   const updateDeviceIdOnServer = async (userId, deviceId) => {
     try {
       await axios.post(
-        'https://offersclub.offerplant.com/opex/api.php?task=update_customer_id',
+        'https://offersclub.offerplant.com/opex/api.php?task=update_customer_profile',
         { 
           'id': parseInt(userId),
           'fcm_token': deviceId

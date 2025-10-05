@@ -73,55 +73,45 @@ export default function QRCashbackClaimScreen() {
     }
   };
 
-  const processCashbackClaim = async () => {
-    if (!amount || parseFloat(amount) <= 0) {
-      Alert.alert('Error', 'Please enter a valid transaction amount');
-      return;
-    }
+const processCashbackClaim = async () => {
+  if (!amount || parseFloat(amount) <= 0) {
+    Alert.alert('Error', 'Please enter a valid transaction amount');
+    return;
+  }
 
-    if (!customerId) {
-      Alert.alert('Error', 'Customer information not found');
-      return;
-    }
+  if (!customerId) {
+    Alert.alert('Error', 'Customer information not found');
+    return;
+  }
 
-    if (!merchant) {
-      Alert.alert('Error', 'Merchant information not found');
-      return;
-    }
+  if (!merchant) {
+    Alert.alert('Error', 'Merchant information not found');
+    return;
+  }
 
-    setLoading(true);
-    try {
-      const response = await axios.post(
-        'https://offersclub.offerplant.com/opex/api.php?task=add_qr_txn',
-        {
-          customer_id: parseInt(customerId),
-          merchant_id: parseInt(merchant.id),
-          txn_amount: parseFloat(amount)
-        }
-      );
-
-      if (response.data.status === 'success') {
-        const currentDate = new Date();
-        setTransactionData({
-          id: response.data.id,
-          amount: parseFloat(amount),
-          merchant: merchant.business_name,
-          date: currentDate.toLocaleDateString(),
-          time: currentDate.toLocaleTimeString(),
-          cashbackPercent: 5, // You can get this from API response
-          cashbackAmount: (parseFloat(amount) * 0.05).toFixed(2) // Calculate based on percentage
-        });
-        setShowSuccessModal(true);
-      } else {
-        Alert.alert('Error', response.data.msg || 'Cashback claim failed');
+  setLoading(true);
+  try {
+    const response = await axios.post(
+      'https://offersclub.offerplant.com/opex/api.php?task=add_qr_txn',
+      {
+        customer_id: parseInt(customerId),
+        merchant_id: parseInt(merchant.id),
+        txn_amount: parseFloat(amount)
       }
-    } catch (error) {
-      console.error('Cashback claim error:', error);
-      Alert.alert('Error', 'Network error. Please try again.');
-    } finally {
-      setLoading(false);
+    );
+
+    if (response.data.status === 'success') {
+      setShowSuccessModal(true); // ✅ Show modal without cashback details
+    } else {
+      Alert.alert('Error', response.data.msg || 'Request failed');
     }
-  };
+  } catch (error) {
+    console.error('Cashback claim error:', error);
+    Alert.alert('Error', 'Network error. Please try again.');
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleSuccessClose = () => {
     setShowSuccessModal(false);
@@ -146,93 +136,64 @@ export default function QRCashbackClaimScreen() {
   };
 
   const SuccessModal = () => (
-    <Modal
-      visible={showSuccessModal}
-      transparent={true}
-      animationType="none"
-      onRequestClose={handleSuccessClose}
-    >
-      <View style={styles.modalOverlay}>
-        <Animated.View 
-          style={[
-            styles.modalContent,
-            {
-              transform: [{ scale: scaleAnim }],
-              opacity: fadeAnim,
-            }
-          ]}
+  <Modal
+    visible={showSuccessModal}
+    transparent={true}
+    animationType="none"
+    onRequestClose={handleSuccessClose}
+  >
+    <View style={styles.modalOverlay}>
+      <Animated.View 
+        style={[
+          styles.modalContent,
+          {
+            transform: [{ scale: scaleAnim }],
+            opacity: fadeAnim,
+          }
+        ]}
+      >
+        <LinearGradient
+          colors={['#4CAF50', '#45a049']}
+          style={styles.successHeader}
         >
-          <LinearGradient
-            colors={['#4CAF50', '#45a049']}
-            style={styles.successHeader}
+          <View style={styles.successIconContainer}>
+            <Ionicons name="checkmark-circle" size={60} color="#fff" />
+          </View>
+          <Text style={styles.successTitle}>Request Submitted!</Text>
+          <Text style={styles.successSubtitle}>
+            Your cashback claim request has been submitted successfully
+          </Text>
+        </LinearGradient>
+
+        <View style={styles.successBody}>
+          <View style={styles.pendingBox}>
+            <Ionicons name="time-outline" size={20} color="#FFA000" />
+            <Text style={styles.pendingText}>
+              Status: Pending Confirmation
+            </Text>
+          </View>
+
+          <View style={styles.successInfo}>
+            <Ionicons name="information-circle-outline" size={16} color="#666" />
+            <Text style={styles.successInfoText}>
+              Cashback will be reviewed and credited to your wallet within 24-48 hours.
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.modalActions}>
+          <TouchableOpacity 
+            style={styles.primaryAction}
+            onPress={handleSuccessClose}
           >
-            <View style={styles.successIconContainer}>
-              <Ionicons name="checkmark-circle" size={60} color="#fff" />
-            </View>
-            <Text style={styles.successTitle}>Cashback Claimed!</Text>
-            <Text style={styles.successSubtitle}>Your request has been processed successfully</Text>
-          </LinearGradient>
-
-          <View style={styles.successBody}>
-            <View style={styles.cashbackAmountContainer}>
-              <Text style={styles.cashbackLabel}>Cashback Earned</Text>
-              <Text style={styles.cashbackAmount}>₹{transactionData?.cashbackAmount}</Text>
-              <Text style={styles.cashbackPercent}>{transactionData?.cashbackPercent}% of transaction amount</Text>
-            </View>
-
-            <View style={styles.transactionDetails}>
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Transaction Amount</Text>
-                <Text style={styles.detailValue}>₹{transactionData?.amount}</Text>
-              </View>
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Merchant</Text>
-                <Text style={styles.detailValue}>{transactionData?.merchant}</Text>
-              </View>
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Claim ID</Text>
-                <Text style={styles.detailValue}>#{transactionData?.id}</Text>
-              </View>
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Date & Time</Text>
-                <Text style={styles.detailValue}>
-                  {transactionData?.date} at {transactionData?.time}
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.successInfo}>
-              <Ionicons name="information-circle-outline" size={16} color="#666" />
-              <Text style={styles.successInfoText}>
-                Cashback will be credited to your wallet within 24-48 hours
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.modalActions}>
-            <TouchableOpacity 
-              style={styles.primaryAction}
-              onPress={handleSuccessClose}
-            >
-              <Ionicons name="home" size={20} color="#fff" style={styles.actionIcon} />
-              <Text style={styles.primaryActionText}>Go to Dashboard</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.secondaryAction}
-              onPress={() => {
-                // You can add share functionality here
-                handleSuccessClose();
-              }}
-            >
-              <Ionicons name="share-outline" size={18} color="#5F259F" />
-              <Text style={styles.secondaryActionText}>Share</Text>
-            </TouchableOpacity>
-          </View>
-        </Animated.View>
-      </View>
-    </Modal>
-  );
+            <Ionicons name="home" size={20} color="#fff" style={styles.actionIcon} />
+            <Text style={styles.primaryActionText}>Go to Dashboard</Text>
+          </TouchableOpacity>
+        </View>
+      </Animated.View>
+    </View>
+  </Modal>
+);
 
   if (!merchant) {
     return (

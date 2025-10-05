@@ -2,7 +2,7 @@
   "expo": {
     "name": "offersclub",
     "slug": "offersclub",
-    "version": "1.0.0",
+    "version": "2.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "userInterfaceStyle": "light",
@@ -42,9 +42,7 @@
         "android.permission.CAMERA",
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.RECORD_AUDIO",
-        "android.permission.RECEIVE_BOOT_COMPLETED",
-        "android.permission.VIBRATE"
+        "android.permission.RECEIVE_BOOT_COMPLETED"
       ],
       "intentFilters": [
         {
@@ -64,7 +62,7 @@
         }
       ],
       "package": "com.offerplant.cash",
-      "googleServicesFile": "./android/app/google-services.json"
+     "googleServicesFile": "./android/app/google-services.json"
     },
     "web": {
       "favicon": "./assets/images/favicon.png"
@@ -94,7 +92,7 @@
       "iosDisplayInForeground": true
     },
     "extra": {
-      "oneSignalAppId": "765e6328-c485-45de-86ff-ba9e022511b1"
+      "oneSignalAppId": "c326b200-d8f3-4fae-99c8-a39b0d8becd0"
     }
   }
 }

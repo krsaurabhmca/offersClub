@@ -118,10 +118,18 @@ const TransactionsScreen = () => {
   // Filter and search transactions
   const filteredTransactions = useMemo(() => {
     return transactions.filter(txn => {
+
+      const safeSearch = (searchQuery || "").toLowerCase();
+
       const matchesSearch = 
-        txn.customer_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        txn.txn_amount.toString().includes(searchQuery) ||
-        txn.id.toString().includes(searchQuery);
+  (txn.customer_name || "").toLowerCase().includes(safeSearch) ||
+  (txn.txn_amount?.toString() || "").includes(searchQuery) ||
+  (txn.id?.toString() || "").includes(searchQuery);
+
+      // const matchesSearch = 
+      //   txn.customer_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      //   txn.txn_amount.toString().includes(searchQuery) ||
+      //   txn.id.toString().includes(searchQuery);
       
       const matchesFilter = 
         statusFilter === 'ALL' || 

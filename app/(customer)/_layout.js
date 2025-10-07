@@ -65,7 +65,7 @@ const _layout = () => {
           tabBarLabelStyle: {
             fontSize: 11,
             fontWeight: "600",
-            marginTop: 3,
+            marginTop: 7,
           },
           tabBarIconStyle: { marginTop: 3 },
           headerShown: false,

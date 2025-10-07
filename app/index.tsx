@@ -1,12 +1,13 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Dimensions,
+  Image,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -21,17 +22,17 @@ import {
 } from 'react-native';
 
 import './firebase';
-const { width, height } = Dimensions.get('window');
+
 export default function LoginScreen() {
   const [mobile, setMobile] = useState('');
   const [loading, setLoading] = useState(false);
-  const [loginType, setLoginType] = useState('customer'); // 'customer' or 'merchant'
+  const [loginType, setLoginType] = useState('customer');
+  const [referralCode, setReferralCode] = useState('');
+  const [showReferral, setShowReferral] = useState(false);
 
   useEffect(() => {
     checkExistingSession();
   }, []);
-
-  
 
   const checkExistingSession = async () => {
     try {
@@ -49,8 +50,13 @@ export default function LoginScreen() {
   };
 
   const sendOTP = async () => {
-    if (!mobile || mobile.length < 10) {
-      Alert.alert('Error', 'Please enter a valid 10-digit mobile number');
+    if (mobile.length !== 10) {
+      Alert.alert('Error', 'Enter valid mobile number');
+      return;
+    }
+
+    if (referralCode && !isValidReferral) {
+      Alert.alert('Error', 'Invalid referral code');
       return;
     }
 
@@ -60,10 +66,12 @@ export default function LoginScreen() {
         ? 'https://offersclub.offerplant.com/opex/api.php?task=merchant_send_otp'
         : 'https://offersclub.offerplant.com/opex/api.php?task=send_otp';
 
-      const response = await axios.post(endpoint, { mobile });
+      const response = await axios.post(endpoint, { 
+        mobile,
+        ...(referralCode && { ref_by: referralCode })
+      });
 
       if (response.data.status === 'success') {
-        // Store mobile, OTP, and login type for verification
         await AsyncStorage.setItem('mobile', mobile);
         await AsyncStorage.setItem('otp', response.data.otp.toString());
         await AsyncStorage.setItem('loginType', loginType);
@@ -73,7 +81,8 @@ export default function LoginScreen() {
           params: { 
             mobile, 
             otpSent: response.data.otp,
-            loginType 
+            loginType,
+            ...(referralCode && { referralCode })
           }
         });
       } else {
@@ -86,241 +95,346 @@ export default function LoginScreen() {
     }
   };
 
-  const formatMobileNumber = (text) => {
-    // Remove any non-digit characters
-    const cleaned = text.replace(/\D/g, '');
-    // Limit to 10 digits
-    return cleaned.slice(0, 10);
-  };
+  const formatNumber = (text) => text.replace(/\D/g, '').slice(0, 10);
+  const formatReferral = (text) => text.replace(/\D/g, '').slice(0, 6);
 
   const isValidMobile = mobile.length === 10;
-
-  const toggleLoginType = (type) => {
-    setLoginType(type);
-    setMobile(''); // Clear mobile when switching
-  };
+  const isValidReferral = referralCode.length === 6 && 
+    (referralCode[0] === '2' || referralCode[0] === '3');
 
   return (
     <View style={styles.container}>
       <StatusBar backgroundColor="#5f259f" barStyle="light-content" />
       
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.brandContainer}>
+      {/* Gradient Background Header */}
+      <LinearGradient
+        colors={['#5f259f', '#7c3aed', '#5f259f']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.gradientHeader}
+      >
+        <View style={styles.headerContent}>
           <View style={styles.logoContainer}>
-            <MaterialCommunityIcons name="qrcode-scan" size={32} color="#fff" />
+            <View style={styles.logoOuter}>
+              <View style={styles.logoInner}>
+                <Image
+                  source={require('./assets/logo.png')} // Add your logo
+                  style={styles.logo}
+                  resizeMode="contain"
+                />
+                {/* Fallback Icon */}
+                {/* <MaterialCommunityIcons name="qrcode-scan" size={32} color="#5f259f" /> */}
+              </View>
+            </View>
           </View>
           <Text style={styles.brandName}>OffersClub</Text>
-          <Text style={styles.brandTagline}>Scan, Save & Smile</Text>
+          <Text style={styles.tagline}>Scan • Save • Smile</Text>
         </View>
-      </View>
+        
+        {/* Wave decoration */}
+        <View style={styles.wave} />
+      </LinearGradient>
 
-      {/* Scrollable Content */}
       <KeyboardAvoidingView 
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardView}
+        style={styles.flex}
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <ScrollView 
-            style={styles.scrollView}
+            style={styles.flex}
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
-            {/* Welcome Section */}
-            <View style={styles.welcomeSection}>
-              <Text style={styles.welcomeTitle}>Welcome to OffersClub</Text>
-              <Text style={styles.welcomeSubtitle}>
-                India's most-loved Offers app
-              </Text>
-            </View>
-
             {/* Login Type Switcher */}
-            <View style={styles.switcherContainer}>
-              <View style={styles.switcherCard}>
+            <View style={styles.switcherWrapper}>
+              <View style={styles.switcherContainer}>
                 <TouchableOpacity
-                  style={[
-                    styles.switcherOption,
-                    loginType === 'customer' && styles.switcherOptionActive
-                  ]}
-                  onPress={() => toggleLoginType('customer')}
-                  activeOpacity={0.8}
+                  style={[styles.switcherTab, loginType === 'customer' && styles.switcherTabActive]}
+                  onPress={() => {
+                    setLoginType('customer');
+                    setMobile('');
+                    setReferralCode('');
+                    setShowReferral(false);
+                  }}
+                  activeOpacity={0.7}
                 >
-                  <View style={styles.switcherIconContainer}>
+                  {loginType === 'customer' && (
+                    <LinearGradient
+                      colors={['#5f259f', '#7c3aed']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.activeTabGradient}
+                    />
+                  )}
+                  <View style={styles.tabContent}>
                     <Ionicons 
                       name="person" 
                       size={20} 
-                      color={loginType === 'customer' ? '#fff' : '#5f259f'} 
+                      color={loginType === 'customer' ? '#fff' : '#999'} 
                     />
+                    <Text style={[styles.tabText, loginType === 'customer' && styles.tabTextActive]}>
+                      Customer
+                    </Text>
                   </View>
-                  <Text style={[
-                    styles.switcherText,
-                    loginType === 'customer' && styles.switcherTextActive
-                  ]}>
-                    Customer
-                  </Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={[
-                    styles.switcherOption,
-                    loginType === 'merchant' && styles.switcherOptionActive
-                  ]}
-                  onPress={() => toggleLoginType('merchant')}
-                  activeOpacity={0.8}
+                  style={[styles.switcherTab, loginType === 'merchant' && styles.switcherTabActive]}
+                  onPress={() => {
+                    setLoginType('merchant');
+                    setMobile('');
+                    setReferralCode('');
+                    setShowReferral(false);
+                  }}
+                  activeOpacity={0.7}
                 >
-                  <View style={styles.switcherIconContainer}>
+                  {loginType === 'merchant' && (
+                    <LinearGradient
+                      colors={['#5f259f', '#7c3aed']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.activeTabGradient}
+                    />
+                  )}
+                  <View style={styles.tabContent}>
                     <MaterialCommunityIcons 
                       name="store" 
                       size={20} 
-                      color={loginType === 'merchant' ? '#fff' : '#5f259f'} 
+                      color={loginType === 'merchant' ? '#fff' : '#999'} 
                     />
+                    <Text style={[styles.tabText, loginType === 'merchant' && styles.tabTextActive]}>
+                      Merchant
+                    </Text>
                   </View>
-                  <Text style={[
-                    styles.switcherText,
-                    loginType === 'merchant' && styles.switcherTextActive
-                  ]}>
-                    Merchant
-                  </Text>
                 </TouchableOpacity>
               </View>
             </View>
 
-            {/* Login Card */}
-            <View style={styles.loginCard}>
-              <View style={styles.loginHeader}>
-                <Text style={styles.loginTitle}>
-                  {loginType === 'merchant' ? 'Merchant Login' : 'Login or Sign up'}
-                </Text>
-                <Text style={styles.loginSubtitle}>
-                  {loginType === 'merchant' 
-                    ? 'Access your merchant dashboard'
-                    : 'to get started with your account'
-                  }
+            {/* Main Login Card */}
+            <View style={styles.mainCard}>
+              <View style={styles.cardHeader}>
+                <Text style={styles.welcomeText}>Welcome Back! 👋</Text>
+                <Text style={styles.subtitle}>
+                  {loginType === 'merchant' ? 'Manage your business' : 'Discover amazing offers'}
                 </Text>
               </View>
 
-              <View style={styles.inputSection}>
+              {/* Mobile Number Input */}
+              <View style={styles.inputContainer}>
                 <Text style={styles.inputLabel}>Mobile Number</Text>
                 <View style={[
-                  styles.inputContainer,
-                  mobile.length > 0 && !isValidMobile && styles.inputContainerError
+                  styles.inputBox,
+                  mobile.length > 0 && !isValidMobile && styles.inputBoxError,
+                  isValidMobile && styles.inputBoxSuccess
                 ]}>
-                  <View style={styles.countryCode}>
-                    <Text style={styles.countryCodeText}>🇮🇳 +91</Text>
+                  <View style={styles.countryCodeBox}>
+                    <Text style={styles.flag}>🇮🇳</Text>
+                    <Text style={styles.countryCode}>+91</Text>
                   </View>
+                  <View style={styles.divider} />
                   <TextInput
-                    style={styles.input}
-                    placeholder={` ${loginType} mobile number`}
+                    style={styles.textInput}
+                    placeholder="Enter 10-digit number"
                     placeholderTextColor="#999"
                     value={mobile}
-                    onChangeText={(text) => setMobile(formatMobileNumber(text))}
+                    onChangeText={(text) => setMobile(formatNumber(text))}
                     keyboardType="numeric"
                     maxLength={10}
-                    autoFocus
                   />
                   {isValidMobile && (
-                    <View style={styles.validIcon}>
-                      <Ionicons name="checkmark-circle" size={20} color="#00C851" />
+                    <View style={styles.checkIconBox}>
+                      <Ionicons name="checkmark-circle" size={24} color="#00C853" />
                     </View>
                   )}
                 </View>
-                
-                {mobile.length > 0 && mobile.length < 10 && (
-                  <Text style={styles.errorText}>
-                    Please enter a valid 10-digit mobile number
-                  </Text>
-                )}
               </View>
 
-              {/* Custom PhonePe-style Button */}
-              <TouchableOpacity
-                style={[
-                  styles.proceedButton,
-                  !isValidMobile && styles.proceedButtonDisabled
-                ]}
-                onPress={sendOTP}
-                disabled={loading || !isValidMobile}
-                activeOpacity={0.8}
+              {/* Referral Code Section */}
+              <TouchableOpacity 
+                style={styles.referralButton}
+                onPress={() => setShowReferral(!showReferral)}
+                activeOpacity={0.7}
               >
-                {loading ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <Text style={[
-                    styles.proceedButtonText,
-                    !isValidMobile && styles.proceedButtonTextDisabled
-                  ]}>
-                    PROCEED
+                <View style={styles.referralButtonContent}>
+                  <View style={styles.referralIconBox}>
+                    <MaterialCommunityIcons name="gift" size={20} color="#5f259f" />
+                  </View>
+                  <Text style={styles.referralButtonText}>
+                    {showReferral ? 'Hide Referral Code' : 'Have a Referral Code? '}
                   </Text>
-                )}
+                </View>
+                <View style={styles.referralBadge}>
+                  <Text style={styles.referralBadgeText}>For New Users</Text>
+                </View>
               </TouchableOpacity>
 
-              <View style={styles.termsSection}>
-                <Text style={styles.termsText}>
-                  By proceeding, you accept our{' '}
-                  <Text style={styles.termsLink}>Terms & Conditions</Text>
-                  {' '}and{' '}
-                  <Text style={styles.termsLink}>Privacy Policy</Text>
-                </Text>
-              </View>
-            </View>
+              {/* Referral Code Input */}
+              {showReferral && (
+                <View style={[styles.inputContainer, styles.referralInputContainer]}>
+                  <Text style={styles.inputLabel}>Referral Code</Text>
+                  <View style={[
+                    styles.inputBox,
+                    referralCode.length > 0 && !isValidReferral && styles.inputBoxError,
+                    isValidReferral && styles.inputBoxSuccess
+                  ]}>
+                    <View style={styles.referralIconInInput}>
+                      <MaterialCommunityIcons name="ticket-percent" size={22} color="#5f259f" />
+                    </View>
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder="2XXXXX or 3XXXXX"
+                      placeholderTextColor="#999"
+                      value={referralCode}
+                      onChangeText={(text) => setReferralCode(formatReferral(text))}
+                      keyboardType="numeric"
+                      maxLength={6}
+                    />
+                    {isValidReferral && (
+                      <View style={styles.checkIconBox}>
+                        <Ionicons name="checkmark-circle" size={24} color="#00C853" />
+                      </View>
+                    )}
+                  </View>
+                  
+                  {isValidReferral && (
+                    <View style={styles.successBanner}>
+                      <LinearGradient
+                        colors={['#00C853', '#00E676']}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={styles.successBannerGradient}
+                      >
+                        <Ionicons name="gift" size={18} color="#fff" />
+                        <Text style={styles.successBannerText}>
+                          🎉 Bonus rewards unlocked!
+                        </Text>
+                      </LinearGradient>
+                    </View>
+                  )}
+                </View>
+              )}
 
-            {/* Features Section */}
-            <View style={styles.featuresSection}>
-              <Text style={styles.featuresTitle}>
-                {loginType === 'merchant' 
-                  ? 'Why choose OffersClub for Business?' 
-                  : 'Why choose OffersClub?'
-                }
+              {/* Continue Button */}
+              <TouchableOpacity
+                style={[styles.continueButton, !isValidMobile && styles.continueButtonDisabled]}
+                onPress={sendOTP}
+                disabled={loading || !isValidMobile}
+                activeOpacity={0.9}
+              >
+                <LinearGradient
+                  colors={isValidMobile ? ['#5f259f', '#7c3aed'] : ['#D1D1D6', '#D1D1D6']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.continueButtonGradient}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <>
+                      <Text style={styles.continueButtonText}>Continue</Text>
+                      <Ionicons name="arrow-forward" size={20} color="#fff" />
+                    </>
+                  )}
+                </LinearGradient>
+              </TouchableOpacity>
+
+              {/* Terms */}
+              <Text style={styles.termsText}>
+                By continuing, you agree to our{'\n'}
+                <Text style={styles.termsLink}>Terms & Conditions</Text> and{' '}
+                <Text style={styles.termsLink}>Privacy Policy</Text>
               </Text>
-              <View style={styles.featuresList}>
-                {loginType === 'merchant' ? (
-                  <>
-                    <View style={styles.featureItem}>
-                      <View style={styles.featureIconContainer}>
-                        <MaterialCommunityIcons name="cash-register" size={20} color="#00C851" />
-                      </View>
-                      <Text style={styles.featureText}>Easy Payment Management</Text>
-                    </View>
-                    <View style={styles.featureItem}>
-                      <View style={styles.featureIconContainer}>
-                        <MaterialCommunityIcons name="chart-line" size={20} color="#5f259f" />
-                      </View>
-                      <Text style={styles.featureText}>Business Analytics</Text>
-                    </View>
-                    <View style={styles.featureItem}>
-                      <View style={styles.featureIconContainer}>
-                        <MaterialCommunityIcons name="qrcode" size={20} color="#FF6B35" />
-                      </View>
-                      <Text style={styles.featureText}>QR Code Payments</Text>
-                    </View>
-                  </>
-                ) : (
-                  <>
-                    <View style={styles.featureItem}>
-                      <View style={styles.featureIconContainer}>
-                        <Ionicons name="shield-checkmark" size={20} color="#00C851" />
-                      </View>
-                      <Text style={styles.featureText}>100% Secure & Safe</Text>
-                    </View>
-                    <View style={styles.featureItem}>
-                      <View style={styles.featureIconContainer}>
-                        <MaterialCommunityIcons name="lightning-bolt" size={20} color="#5f259f" />
-                      </View>
-                      <Text style={styles.featureText}>Instant Cashback </Text>
-                    </View>
-                    <View style={styles.featureItem}>
-                      <View style={styles.featureIconContainer}>
-                        <MaterialCommunityIcons name="gift" size={20} color="#FF6B35" />
-                      </View>
-                      <Text style={styles.featureText}>Exclusive Offers</Text>
-                    </View>
-                  </>
-                )}
-              </View>
             </View>
 
-            <View style={styles.bottomPadding} />
+            {/* Features Grid */}
+            <View style={styles.featuresGrid}>
+              {loginType === 'customer' ? (
+                <>
+                  <View style={styles.featureCard}>
+                    <LinearGradient
+                      colors={['#E8F5E9', '#C8E6C9']}
+                      style={styles.featureGradient}
+                    >
+                      <View style={styles.featureIconWrapper}>
+                        <Ionicons name="shield-checkmark" size={28} color="#00C853" />
+                      </View>
+                      <Text style={styles.featureTitle}>Secure</Text>
+                      <Text style={styles.featureDesc}>100% Safe</Text>
+                    </LinearGradient>
+                  </View>
+
+                  <View style={styles.featureCard}>
+                    <LinearGradient
+                      colors={['#F3E5F5', '#E1BEE7']}
+                      style={styles.featureGradient}
+                    >
+                      <View style={styles.featureIconWrapper}>
+                        <MaterialCommunityIcons name="lightning-bolt" size={28} color="#7c3aed" />
+                      </View>
+                      <Text style={styles.featureTitle}>Instant</Text>
+                      <Text style={styles.featureDesc}>Cashback</Text>
+                    </LinearGradient>
+                  </View>
+
+                  <View style={styles.featureCard}>
+                    <LinearGradient
+                      colors={['#FFF3E0', '#FFE0B2']}
+                      style={styles.featureGradient}
+                    >
+                      <View style={styles.featureIconWrapper}>
+                        <MaterialCommunityIcons name="gift" size={28} color="#FF9800" />
+                      </View>
+                      <Text style={styles.featureTitle}>Exclusive</Text>
+                      <Text style={styles.featureDesc}>Offers</Text>
+                    </LinearGradient>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <View style={styles.featureCard}>
+                    <LinearGradient
+                      colors={['#E8F5E9', '#C8E6C9']}
+                      style={styles.featureGradient}
+                    >
+                      <View style={styles.featureIconWrapper}>
+                        <MaterialCommunityIcons name="qrcode-scan" size={28} color="#00C853" />
+                      </View>
+                      <Text style={styles.featureTitle}>QR Code</Text>
+                      <Text style={styles.featureDesc}>Payments</Text>
+                    </LinearGradient>
+                  </View>
+
+                  <View style={styles.featureCard}>
+                    <LinearGradient
+                      colors={['#F3E5F5', '#E1BEE7']}
+                      style={styles.featureGradient}
+                    >
+                      <View style={styles.featureIconWrapper}>
+                        <MaterialCommunityIcons name="chart-line" size={28} color="#7c3aed" />
+                      </View>
+                      <Text style={styles.featureTitle}>Analytics</Text>
+                      <Text style={styles.featureDesc}>Dashboard</Text>
+                    </LinearGradient>
+                  </View>
+
+                  <View style={styles.featureCard}>
+                    <LinearGradient
+                      colors={['#FFF3E0', '#FFE0B2']}
+                      style={styles.featureGradient}
+                    >
+                      <View style={styles.featureIconWrapper}>
+                        <MaterialCommunityIcons name="cash-multiple" size={28} color="#FF9800" />
+                      </View>
+                      <Text style={styles.featureTitle}>Quick</Text>
+                      <Text style={styles.featureDesc}>Settlement</Text>
+                    </LinearGradient>
+                  </View>
+                </>
+              )}
+            </View>
+
+            <View style={styles.bottomSpace} />
           </ScrollView>
         </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
@@ -331,264 +445,364 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: '#F5F7FA',
   },
-  header: {
-    backgroundColor: '#5f259f',
+  flex: {
+    flex: 1,
+  },
+  
+  // Gradient Header
+  gradientHeader: {
     paddingTop: 50,
-    paddingBottom: 30,
-    alignItems: 'center',
+    paddingBottom: 60,
+    position: 'relative',
   },
-  brandContainer: {
+  headerContent: {
     alignItems: 'center',
+    zIndex: 10,
   },
   logoContainer: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    marginBottom: 16,
+  },
+  logoOuter: {
+    width: 110,
+    height: 110,
+    borderRadius: 55,
     backgroundColor: 'rgba(255,255,255,0.2)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
+    padding: 6,
+  },
+  logoInner: {
+    width: '100%',
+    height: '100%',
+    borderRadius: '50%',
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  logo: {
+    width: 70,
+    height: 70,
   },
   brandName: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: 32,
+    fontWeight: '800',
     color: '#fff',
-    marginBottom: 4,
+    letterSpacing: 1,
+    marginBottom: 1,
   },
-  brandTagline: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.8)',
+  tagline: {
+    fontSize: 15,
+    color: 'rgba(255,255,255,0.9)',
+    fontWeight: '500',
+    letterSpacing: 2,
   },
-  keyboardView: {
-    flex: 1,
+  wave: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 30,
+    backgroundColor: '#F5F7FA',
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
   },
-  scrollView: {
-    flex: 1,
-  },
+
   scrollContent: {
     paddingHorizontal: 20,
-    paddingTop: 30,
-    paddingBottom: 30,
+    paddingTop: 20,
   },
-  welcomeSection: {
-    alignItems: 'center',
-    marginBottom: 20,
+
+  // Switcher
+  switcherWrapper: {
+    marginBottom: 24,
   },
-  welcomeTitle: {
-    fontSize: 22,
-    fontWeight: '600',
-    color: '#2c3e50',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  welcomeSubtitle: {
-    fontSize: 16,
-    color: '#7f8c8d',
-    textAlign: 'center',
-  },
-  // New styles for switcher
   switcherContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 5,
+  },
+  switcherTab: {
+    flex: 1,
+    position: 'relative',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  activeTabGradient: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  tabContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    gap: 8,
+  },
+  tabText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#999',
+  },
+  tabTextActive: {
+    color: '#fff',
+  },
+
+  // Main Card
+  mainCard: {
+    backgroundColor: '#fff',
+    borderRadius: 24,
+    padding: 24,
+    marginBottom: 24,
+    shadowColor: '#5f259f',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    elevation: 8,
+  },
+  cardHeader: {
+    marginBottom: 28,
+  },
+  welcomeText: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: '#1A1A1A',
+    marginBottom: 6,
+  },
+  subtitle: {
+    fontSize: 15,
+    color: '#666',
+    fontWeight: '500',
+  },
+
+  // Input
+  inputContainer: {
     marginBottom: 20,
   },
-  switcherCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 6,
-    flexDirection: 'row',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
+  referralInputContainer: {
+    marginTop: -4,
   },
-  switcherOption: {
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#333',
+    marginBottom: 10,
+    letterSpacing: 0.3,
+  },
+  inputBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8F9FB',
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: '#F8F9FB',
+    overflow: 'hidden',
+  },
+  inputBoxError: {
+    borderColor: '#FF3B30',
+    backgroundColor: '#FFF5F5',
+  },
+  inputBoxSuccess: {
+    borderColor: '#00C853',
+    backgroundColor: '#F1FFF5',
+  },
+  countryCodeBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingLeft: 16,
+    paddingRight: 12,
+    gap: 6,
+  },
+  flag: {
+    fontSize: 22,
+  },
+  countryCode: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1A1A1A',
+  },
+  divider: {
+    width: 2,
+    height: 24,
+    backgroundColor: '#E0E0E0',
+    marginRight: 12,
+  },
+  textInput: {
     flex: 1,
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1A1A1A',
+    paddingVertical: 16,
+  },
+  checkIconBox: {
+    paddingRight: 16,
+  },
+  referralIconInInput: {
+    paddingLeft: 16,
+    paddingRight: 8,
+  },
+
+  // Referral Button
+  referralButton: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#F3E5F5',
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 2,
+    borderColor: '#E1BEE7',
+  },
+  referralButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  referralIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  referralButtonText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#5f259f',
+  },
+  referralBadge: {
+    backgroundColor: '#5f259f',
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  referralBadgeText: {
+    fontSize: 8,
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: 0.2,
+  },
+
+  // Success Banner
+  successBanner: {
+    marginTop: 12,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  successBannerGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 12,
     paddingHorizontal: 16,
-    borderRadius: 8,
-    backgroundColor: 'transparent',
+    gap: 8,
   },
-  switcherOptionActive: {
-    backgroundColor: '#5f259f',
-    shadowColor: '#5f259f',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  switcherIconContainer: {
-    marginRight: 8,
-  },
-  switcherText: {
+  successBannerText: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#5f259f',
-  },
-  switcherTextActive: {
-    color: '#fff',
-  },
-  loginCard: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 24,
-    marginBottom: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  loginHeader: {
-    marginBottom: 24,
-  },
-  loginTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#2c3e50',
-    marginBottom: 4,
-  },
-  loginSubtitle: {
-    fontSize: 14,
-    color: '#7f8c8d',
-  },
-  inputSection: {
-    marginBottom: 24,
-  },
-  inputLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#2c3e50',
-    marginBottom: 8,
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    borderWidth: 2,
-    borderColor: '#e1e5e9',
-    borderRadius: 8,
-    overflow: 'hidden',
-    backgroundColor: '#fff',
-    alignItems: 'center',
-  },
-  inputContainerError: {
-    borderColor: '#e74c3c',
-  },
-  countryCode: {
-    backgroundColor: '#f8f9fa',
-    paddingHorizontal: 12,
-    paddingVertical: 16,
-    borderRightWidth: 1,
-    borderRightColor: '#e1e5e9',
-    justifyContent: 'center',
-  },
-  countryCodeText: {
-    fontSize: 16,
-    color: '#2c3e50',
-    fontWeight: '500',
-  },
-  input: {
-    flex: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    fontSize: 16,
-    color: '#2c3e50',
-    backgroundColor: '#fff',
-  },
-  validIcon: {
-    paddingHorizontal: 12,
-  },
-  errorText: {
-    fontSize: 12,
-    color: '#e74c3c',
-    marginTop: 8,
-    marginLeft: 4,
-  },
-  proceedButton: {
-    backgroundColor: '#5f259f',
-    borderRadius: 8,
-    paddingVertical: 16,
-    marginBottom: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 52,
-    shadowColor: '#5f259f',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  proceedButtonDisabled: {
-    backgroundColor: '#bdc3c7',
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    elevation: 2,
-  },
-  proceedButtonText: {
-    color: '#fff',
-    fontSize: 16,
     fontWeight: '700',
+    color: '#fff',
+  },
+
+  // Continue Button
+  continueButton: {
+    borderRadius: 14,
+    overflow: 'hidden',
+    marginTop: 8,
+    marginBottom: 20,
+    shadowColor: '#5f259f',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  continueButtonDisabled: {
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  continueButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 18,
+    gap: 10,
+  },
+  continueButtonText: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#fff',
     letterSpacing: 1,
   },
-  proceedButtonTextDisabled: {
-    color: '#ecf0f1',
-  },
-  termsSection: {
-    alignItems: 'center',
-  },
+
+  // Terms
   termsText: {
     fontSize: 12,
-    color: '#7f8c8d',
+    color: '#999',
     textAlign: 'center',
     lineHeight: 18,
   },
   termsLink: {
     color: '#5f259f',
-    fontWeight: '500',
+    fontWeight: '700',
   },
-  featuresSection: {
-    backgroundColor: '#fff',
+
+  // Features Grid
+  featuresGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+    gap: 12,
+  },
+  featureCard: {
+    flex: 1,
     borderRadius: 16,
-    padding: 20,
+    overflow: 'hidden',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
+    shadowRadius: 12,
+    elevation: 5,
   },
-  featuresTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#2c3e50',
-    marginBottom: 16,
+  featureGradient: {
+    padding: 16,
+    alignItems: 'center',
+    minHeight: 120,
+    justifyContent: 'center',
+  },
+  featureIconWrapper: {
+    marginBottom: 8,
+  },
+  featureTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#1A1A1A',
+    marginBottom: 2,
     textAlign: 'center',
   },
-  featuresList: {
-    gap: 16,
+  featureDesc: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#666',
+    textAlign: 'center',
   },
-  featureItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  featureIconContainer: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#f8f9fa',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  featureText: {
-    fontSize: 14,
-    color: '#2c3e50',
-    fontWeight: '500',
-    flex: 1,
-  },
-  bottomPadding: {
-    height: 20,
+
+  bottomSpace: {
+    height: 30,
   },
 });

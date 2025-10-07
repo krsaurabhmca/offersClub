@@ -1,16 +1,16 @@
 {
   "expo": {
-    "name": "offersclub",
+    "name": "OffersClub",
     "slug": "offersclub",
-    "version": "2.1.0",
+    "version": "2.2.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "userInterfaceStyle": "light",
     "scheme": "offersclub",
     "splash": {
       "image": "./assets/images/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#667eea"
+      "resizeMode": "cover",
+      "backgroundColor": "#ffffff"
     },
     "assetBundlePatterns": [
       "**/*"

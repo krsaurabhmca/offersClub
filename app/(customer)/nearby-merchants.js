@@ -387,13 +387,13 @@ export default function NearbyMerchantsScreen() {
             style={styles.actionButton}
             onPress={() => {
               router.push({
-                pathname: '/merchant',
-                params: { qr_code: merchant.qr_code }
+                pathname: '/MyOffersScreen',
+                params: { merchant_id: merchant.id }
               });
             }}
           >
             <Ionicons name="information-circle-outline" size={16} color="#5f259f" />
-            <Text style={styles.actionText}>View Details</Text>
+            <Text style={styles.actionText}>View Offers</Text>
           </TouchableOpacity>
           
           <TouchableOpacity 
@@ -509,7 +509,7 @@ export default function NearbyMerchantsScreen() {
 
   return (
     <View style={styles.container}>
-      <StatusBar backgroundColor="#fff" barStyle="dark-content" />
+      <StatusBar backgroundColor="#fff" barStyle="light-content" />
       
       {/* Header */}
       <View style={styles.header}>

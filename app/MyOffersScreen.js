@@ -1,13 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   RefreshControl,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -15,6 +16,8 @@ import {
 } from 'react-native';
 
 const MyOffersScreen = ({ onBack, onEditOffer }) => {
+  const { merchant_id: routeMerchantId } = useLocalSearchParams(); // ✅ from route
+ 
   const [offers, setOffers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -22,39 +25,41 @@ const MyOffersScreen = ({ onBack, onEditOffer }) => {
 
  
 const fetchOffers = async (isRefresh = false) => {
-  try {
-    if (!isRefresh) setLoading(true);
+    try {
+      if (!isRefresh) setLoading(true);
 
-    // ✅ Always await AsyncStorage
-    const merchantId = await AsyncStorage.getItem('merchant_id');
-    const id = merchantId;  
+      let id = routeMerchantId; // ✅ Try from route first
 
-    if (!id) {
-      Alert.alert("Error", "Merchant ID not found");
-      return;
+      // If not in route → fallback to AsyncStorage
+      if (!id) {
+        id = await AsyncStorage.getItem("merchant_id");
+      }
+
+      if (!id) {
+        Alert.alert("Error", "Merchant ID not found");
+        return;
+      }
+
+      const response = await axios.post(
+        "https://offersclub.offerplant.com/opex/api.php?task=merchant_offers",
+        { merchant_id: id },
+        { headers: { "Content-Type": "application/json" } }
+      );
+
+      if (response.data.status === "success") {
+        setOffers(response.data.data || []);
+        setCount(response.data.count || 0);
+      } else {
+       // Alert.alert("Error", "Failed to fetch offers");
+      }
+    } catch (error) {
+      console.error("Error fetching offers:", error);
+      Alert.alert("Error", "Network error. Please try again.");
+    } finally {
+      setLoading(false);
+      if (isRefresh) setRefreshing(false);
     }
-
-    const response = await axios.post(
-      'https://offersclub.offerplant.com/opex/api.php?task=merchant_offers',
-      { merchant_id: id },
-      { headers: { 'Content-Type': 'application/json' } }
-    );
-
-    if (response.data.status === 'success') {
-      setOffers(response.data.data || []);
-      setCount(response.data.count || 0);
-    } else {
-      Alert.alert('Error', 'Failed to fetch offers');
-    }
-  } catch (error) {
-    console.error('Error fetching offers:', error);
-    Alert.alert('Error', 'Network error. Please try again.');
-  } finally {
-    setLoading(false);
-    if (isRefresh) setRefreshing(false);
-  }
-};
-
+  };
 
   useEffect(() => {
     fetchOffers();
@@ -232,6 +237,7 @@ const fetchOffers = async (isRefresh = false) => {
 
   return (
     <View style={styles.container}>
+    <StatusBar backgroundColor="#5f259f" barStyle="light-content" />
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerContent}>
@@ -239,7 +245,7 @@ const fetchOffers = async (isRefresh = false) => {
             <TouchableOpacity style={styles.backButton} onPress={myBack}>
               <Ionicons name="arrow-back" size={24} color="white" />
             </TouchableOpacity>
-            <Text style={styles.headerTitle}>My Offers</Text>
+            <Text style={styles.headerTitle}>Active Offers</Text>
           </View>
           <TouchableOpacity style={styles.refreshButton} onPress={onRefresh}>
             <Ionicons name="refresh-outline" size={20} color="white" />
@@ -278,7 +284,7 @@ const fetchOffers = async (isRefresh = false) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: '#5f27cd',
   },
   header: {
     backgroundColor: '#5f27cd',
@@ -323,6 +329,7 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     padding: 20,
+    backgroundColor: '#f9fafb',
   },
   offerCard: {
     backgroundColor: 'white',

@@ -16,6 +16,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 export default function TransactionHistoryScreen() {
   const [transactions, setTransactions] = useState([]);
@@ -25,6 +26,7 @@ export default function TransactionHistoryScreen() {
   const [customerId, setCustomerId] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [totalAmount, setTotalAmount] = useState(0);
+  const [totalCashback, setTotalCashback] = useState(0);
 
   useEffect(() => {
     loadCustomerId();
@@ -65,6 +67,15 @@ export default function TransactionHistoryScreen() {
         // Calculate total amount
         const total = txnData.reduce((sum, txn) => sum + parseFloat(txn.txn_amount), 0);
         setTotalAmount(total);
+
+        // Calculate total cashback (only from confirmed transactions with cashback)
+        const cashback = txnData.reduce((sum, txn) => {
+          if (txn.cashback && txn.txn_status === 'CONFIRMED') {
+            return sum + parseFloat(txn.cashback);
+          }
+          return sum;
+        }, 0);
+        setTotalCashback(cashback);
       } else {
         Alert.alert('Error', 'Failed to load transaction history');
       }
@@ -152,6 +163,7 @@ export default function TransactionHistoryScreen() {
 
   const TransactionCard = ({ transaction }) => {
     const iconData = getTransactionIcon(transaction.txn_status);
+    const hasCashback = transaction.cashback && parseFloat(transaction.cashback) > 0;
     
     return (
       <TouchableOpacity style={styles.transactionCard} activeOpacity={0.7}>
@@ -168,8 +180,16 @@ export default function TransactionHistoryScreen() {
               <Text style={styles.merchantName} numberOfLines={1}>
                 {transaction.business_name}
               </Text>
-              <Text style={styles.transactionId}>TXN{transaction.id}</Text>
+              {/* <Text style={styles.transactionId}>TXN{transaction.id}</Text> */}
               <Text style={styles.dateText}>{formatDate(transaction.created_at)}</Text>
+              {hasCashback && (
+                <View style={styles.cashbackContainer}>
+                  <MaterialIcons name="card-giftcard" size={12} color="#28a745" />
+                  <Text style={styles.cashbackText}>
+                   {transaction.txn_remarks|| 'Cashback'}: ₹{parseFloat(transaction.cashback).toFixed(2)}
+                  </Text>
+                </View>
+              )} 
             </View>
           </View>
           
@@ -197,19 +217,18 @@ export default function TransactionHistoryScreen() {
       </View>
       <View style={styles.summaryGrid}>
         <View style={styles.summaryItem}>
-          {/* <View style={styles.summaryIconContainer}>
-            <MaterialIcons name="receipt-long" size={16} color="#5f259f" />
-          </View> */}
           <Text style={styles.summaryValue}>{transactions.length}</Text>
           <Text style={styles.summaryLabel}>Total Transactions</Text>
         </View>
         <View style={styles.summaryDivider} />
         <View style={styles.summaryItem}>
-          {/* <View style={styles.summaryIconContainer}>
-            <MaterialIcons name="currency-rupee" size={16} color="#5f259f" />
-          </View> */}
           <Text style={styles.summaryValue}>₹{totalAmount.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</Text>
           <Text style={styles.summaryLabel}>Total Amount</Text>
+        </View>
+        <View style={styles.summaryDivider} />
+        <View style={styles.summaryItem}>
+          <Text style={[styles.summaryValue, styles.cashbackValue]}>₹{totalCashback.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</Text>
+          <Text style={styles.summaryLabel}>Total Cashback</Text>
         </View>
       </View>
     </View>
@@ -240,6 +259,8 @@ export default function TransactionHistoryScreen() {
   );
 
   return (
+    <SafeAreaProvider>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#5f259f' }} edges={['top']} >
     <View style={styles.container}>
        <StatusBar backgroundColor="#5f259f" barStyle="light-content" />
       
@@ -339,6 +360,8 @@ export default function TransactionHistoryScreen() {
         </ScrollView>
       )}
     </View>
+    </SafeAreaView>
+    </SafeAreaProvider>
   );
 }
 
@@ -457,21 +480,24 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   summaryValue: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
     color: '#5f259f',
     marginBottom: 4,
   },
+  cashbackValue: {
+    color: '#28a745',
+  },
   summaryLabel: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#6c757d',
     textAlign: 'center',
   },
   summaryDivider: {
     width: 1,
-    height: 60,
+    height: 50,
     backgroundColor: '#e9ecef',
-    marginHorizontal: 20,
+    marginHorizontal: 8,
   },
   resultsHeader: {
     flexDirection: 'row',
@@ -538,6 +564,23 @@ const styles = StyleSheet.create({
   dateText: {
     fontSize: 12,
     color: '#6c757d',
+    marginBottom: 4,
+  },
+  cashbackContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    backgroundColor: '#d4edda',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+    alignSelf: 'flex-start',
+  },
+  cashbackText: {
+    fontSize: 11,
+    color: '#28a745',
+    fontWeight: '600',
+    marginLeft: 4,
   },
   amountSection: {
     alignItems: 'flex-end',

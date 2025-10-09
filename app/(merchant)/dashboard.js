@@ -14,35 +14,32 @@ import {
   Animated,
   Dimensions,
   RefreshControl,
-  ScrollView,
   Share,
   StatusBar,
   StyleSheet,
   Text,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
 import { OneSignal } from 'react-native-onesignal';
+
 const { width } = Dimensions.get("window");
 
 export default function MerchantDashboard() {
   const [merchantData, setMerchantData] = useState(null);
-  const [transactions, setTransactions] = useState({
-    pending: [],
-    confirmed: [],
-  });
+  const [dashboardData, setDashboardData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [walletBalance, setWalletBalance] = useState(0);
   const [notificationPermission, setNotificationPermission] = useState(false);
-  const fadeAnim = new Animated.Value(0);
+  const fadeAnim = new Animated.Value(1);
 
   useEffect(() => {
     loadMerchantData();
-    loadTransactions();
+    loadDashboardData();
     setupOneSignal();
     Animated.timing(fadeAnim, {
-      toValue: 1,
+      toValue: 1, 
       duration: 800,
       useNativeDriver: true,
     }).start();
@@ -50,63 +47,69 @@ export default function MerchantDashboard() {
 
   /**
    * Setup OneSignal push notifications
-   * Handles permission requests and event listeners
+   * Updated for latest OneSignal SDK
    */
   const setupOneSignal = async () => {
     try {
-      // Check existing notification permission
-      const permission = await OneSignal.Notifications.getPermissionAsync();
+      // Initialize OneSignal
+      OneSignal.initialize("c326b200-d8f3-4fae-99c8-a39b0d8becd0"); // Replace with your actual app ID
+
+      // Request notification permission
+      const permission = await OneSignal.Notifications.requestPermission(true);
       setNotificationPermission(permission);
 
-      // Request permission if not already granted
-      if (!permission) {
-        const result = await OneSignal.Notifications.requestPermission(true);
-        setNotificationPermission(result);
-      }
-
-      // Handle notifications received when app is in foreground
+      // Handle notification received when app is in foreground
       OneSignal.Notifications.addEventListener(
         "foregroundWillDisplay",
         (event) => {
           console.log("Notification received in foreground:", event);
-          event.preventDefault();
+          // Show notification even when app is in foreground
           event.getNotification().display();
         }
       );
 
-      // Handle notification clicks for navigation
+      // Handle notification clicks
       OneSignal.Notifications.addEventListener("click", (event) => {
         console.log("Notification clicked:", event);
         const data = event.notification.additionalData;
-
-        // Navigate based on notification data
+        
+        // Handle navigation based on notification type
+        if (data?.type === 'transaction') {
+          router.push('/merchant-txn');
+        } else if (data?.type === 'offer') {
+          router.push('/MyOffersScreen');
+        }
       });
+
+      console.log('OneSignal setup completed');
     } catch (error) {
       console.error("OneSignal setup error:", error);
     }
   };
 
-   /**
-   * Link user with OneSignal for targeted push notifications
-   * @param {string} userId - Customer ID to link with OneSignal
-   * @param {object} merchantData - Merchant profile data
+  /**
+   * Link user with OneSignal for targeted notifications
    */
   const linkUserWithOneSignal = async (userId, merchantData) => {
     try {
-      // Set external user ID in OneSignal
+      // Login user with OneSignal
       await OneSignal.login(userId.toString());
       
-      // Add user tags for segmentation and targeting
+      // Set user tags for segmentation
       await OneSignal.User.addTags({
         userType: 'merchant',
-        merchant_id: userId,
-        wallet: merchantData.wallet || '0'
+        merchant_id: userId.toString(),
+        business_name: merchantData.business_name || '',
+        wallet: merchantData.wallet || '0',
+        status: merchantData.status || 'ACTIVE'
       });
       
       console.log('User linked with OneSignal:', userId);
       
-      // Get device push subscription ID and update on server
-      const deviceId = await OneSignal.User.pushSubscription.getIdAsync();
+      // Get push subscription ID and update on server
+      const pushSubscription = OneSignal.User.pushSubscription;
+      const deviceId = await pushSubscription.getIdAsync();
+      
       if (deviceId) {
         await updateDeviceIdOnServer(userId, deviceId);
       }
@@ -116,17 +119,15 @@ export default function MerchantDashboard() {
   };
 
   /**
-   * Update device ID on server for push notification targeting
-   * @param {string} userId - Customer ID
-   * @param {string} deviceId - OneSignal device ID
+   * Update device ID on server
    */
   const updateDeviceIdOnServer = async (userId, deviceId) => {
     try {
       await axios.post(
         'https://offersclub.offerplant.com/opex/api.php?task=update_merchant_profile',
         { 
-          'id': parseInt(userId),
-          'fcm_token': deviceId
+          id: parseInt(userId),
+          fcm_token: deviceId
         }
       );
       
@@ -154,33 +155,32 @@ export default function MerchantDashboard() {
         setWalletBalance(parseFloat(response.data.wallet || 0));
         
         // Link user with OneSignal after profile is loaded
-        linkUserWithOneSignal(response.data.id, response.data);
+        await linkUserWithOneSignal(response.data.id, response.data);
       }
     } catch (error) {
       console.error("Error loading merchant data:", error);
+      Alert.alert("Error", "Failed to load merchant data");
     }
   };
 
-  const loadTransactions = async () => {
+  /**
+   * Load dashboard summary data from new API
+   */
+  const loadDashboardData = async () => {
     try {
       const merchantId = await AsyncStorage.getItem("merchant_id");
       if (!merchantId) return;
 
       const response = await axios.post(
-        "https://offersclub.offerplant.com/opex/api.php?task=merchant_transactions",
-        { merchant_id: parseInt(merchantId) }
+        "https://offersclub.offerplant.com/opex/api.php?task=merchant_dashboard",
+        { merchant_id: merchantId }
       );
 
-      if (response.data && response.data.status === "success") {
-        const allTransactions = response.data.data || [];
-        const pending = allTransactions.filter((t) => t.status === "PENDING");
-        const confirmed = allTransactions.filter(
-          (t) => t.status === "CONFIRMED"
-        );
-        setTransactions({ pending, confirmed });
+      if (response.data) {
+        setDashboardData(response.data);
       }
     } catch (error) {
-      console.error("Error loading transactions:", error);
+      console.error("Error loading dashboard data:", error);
     } finally {
       setLoading(false);
     }
@@ -188,7 +188,7 @@ export default function MerchantDashboard() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([loadMerchantData(), loadTransactions()]);
+    await Promise.all([loadMerchantData(), loadDashboardData()]);
     setRefreshing(false);
   }, []);
 
@@ -209,16 +209,6 @@ export default function MerchantDashboard() {
     }
   };
 
-  const viewQRCode = () => {
-    router.push({
-      pathname: "/qr-code-display",
-      params: {
-        qrCode: merchantData.qr_code,
-        businessName: merchantData.business_name,
-      },
-    });
-  };
-
   const handleCreateOffer = () => {
     router.push("/CreateOfferScreen");
   };
@@ -237,6 +227,13 @@ export default function MerchantDashboard() {
         text: "Logout",
         style: "destructive",
         onPress: async () => {
+          // Logout from OneSignal
+          try {
+            await OneSignal.logout();
+          } catch (error) {
+            console.error("OneSignal logout error:", error);
+          }
+          
           await AsyncStorage.clear();
           router.replace("/");
         },
@@ -249,7 +246,7 @@ export default function MerchantDashboard() {
       style: "currency",
       currency: "INR",
       maximumFractionDigits: 0,
-    }).format(amount);
+    }).format(amount || 0);
   };
 
   const getGreeting = () => {
@@ -268,300 +265,111 @@ export default function MerchantDashboard() {
     notification,
   }) => (
     <TouchableOpacity
-      style={{
-        width: (width - 52) / 2,
-        backgroundColor: "#fff",
-        borderRadius: 12,
-        padding: 16,
-        alignItems: "center",
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-        elevation: 3,
-      }}
+      style={styles.quickActionCard}
       onPress={onPress}
       activeOpacity={0.8}
     >
-      <View style={{
-        width: 56,
-        height: 56,
-        borderRadius: 28,
-        justifyContent: "center",
-        alignItems: "center",
-        marginBottom: 12,
-        position: "relative",
-        backgroundColor: color
-      }}>
+      <View style={[styles.quickActionIcon, { backgroundColor: color }]}>
         {icon}
         {notification && (
-          <View style={{
-            position: "absolute",
-            top: -4,
-            right: -4,
-            backgroundColor: "#FF6B35",
-            borderRadius: 8,
-            minWidth: 16,
-            height: 16,
-            justifyContent: "center",
-            alignItems: "center",
-          }}>
-            <Text style={{
-              color: "#fff",
-              fontSize: 10,
-              fontWeight: "bold",
-            }}>{notification}</Text>
+          <View style={styles.notificationBadge}>
+            <Text style={styles.notificationText}>{notification}</Text>
           </View>
         )}
       </View>
-      <Text style={{
-        fontSize: 14,
-        fontWeight: "600",
-        color: "#1F2937",
-        marginBottom: 4,
-        textAlign: "center",
-      }}>{title}</Text>
-      <Text style={{
-        fontSize: 12,
-        color: "#6B7280",
-        textAlign: "center",
-      }}>{subtitle}</Text>
+      <Text style={styles.quickActionTitle}>{title}</Text>
+      <Text style={styles.quickActionSubtitle}>{subtitle}</Text>
     </TouchableOpacity>
   );
 
-  const TransactionCard = ({ type, count, amount, color, onPress }) => (
+  const SummaryCard = ({ title, amount, count, color, onPress, icon }) => (
     <TouchableOpacity
-      style={{
-        flex: 1,
-        backgroundColor: "#fff",
-        borderRadius: 12,
-        padding: 16,
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-        elevation: 3,
-      }}
+      style={styles.summaryCard}
       onPress={onPress}
       activeOpacity={0.8}
     >
-      <View style={{
-        flexDirection: "row",
-        alignItems: "center",
-        marginBottom: 8,
-      }}>
-        <View style={{
-          width: 8,
-          height: 8,
-          borderRadius: 4,
-          marginRight: 8,
-          backgroundColor: color
-        }} />
-        <Text style={{
-          fontSize: 14,
-          fontWeight: "500",
-          color: "#374151",
-          flex: 1,
-        }}>{type}</Text>
+      <View style={styles.summaryHeader}>
+        <View style={[styles.summaryIcon, { backgroundColor: color }]}>
+          {icon}
+        </View>
+        <View style={styles.summaryContent}>
+          <Text style={styles.summaryTitle}>{title}</Text>
+          <Text style={[styles.summaryAmount, { color }]}>
+            {formatCurrency(amount)}
+          </Text>
+          <Text style={styles.summaryCount}>
+            {count} transaction{count !== 1 ? 's' : ''}
+          </Text>
+        </View>
         <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
       </View>
-      <Text style={{
-        fontSize: 12,
-        color: "#6B7280",
-        marginBottom: 4,
-      }}>{count} transactions</Text>
-      <Text style={{
-        fontSize: 16,
-        fontWeight: "bold",
-        color: color
-      }}>
-        {formatCurrency(amount)}
-      </Text>
     </TouchableOpacity>
   );
 
   if (loading) {
     return (
-      <View style={{
-        flex: 1,
-        justifyContent: "center",
-        alignItems: "center",
-        backgroundColor: "#f8f9fa",
-      }}>
+      <View style={styles.loadingContainer}>
         <StatusBar backgroundColor="#5f259f" barStyle="light-content" />
         <ActivityIndicator size="large" color="#5f259f" />
-        <Text style={{
-          marginTop: 16,
-          fontSize: 16,
-          color: "#5f259f",
-        }}>Loading Dashboard...</Text>
+        <Text style={styles.loadingText}>Loading Dashboard...</Text>
       </View>
     );
   }
 
   return (
-    <View style={{
-      flex: 1,
-      backgroundColor: "#f8f9fa",
-    }}>
+    <View style={styles.container}>
       <StatusBar backgroundColor="#5f259f" barStyle="light-content" />
 
       {/* Header */}
-      <LinearGradient colors={["#5f259f", "#713EBE"]} style={{
-        paddingTop: 50,
-        paddingBottom: 20,
-        paddingHorizontal: 20,
-      }}>
-        <View style={{
-          flexDirection: "row",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 20,
-          paddingRight: 30,
-        }}>
-          <View style={{
-            flexDirection: "row",
-            alignItems: "center",
-          }}>
-            <View style={{
-              width: 48,
-              height: 48,
-              borderRadius: 24,
-              backgroundColor: "rgba(255,255,255,0.2)",
-              justifyContent: "center",
-              alignItems: "center",
-              marginRight: 12,
-            }}>
+      <LinearGradient colors={["#5f259f", "#713EBE"]} style={styles.header}>
+        <View style={styles.headerContent}>
+          <View style={styles.userSection}>
+            <View style={styles.avatar}>
               <MaterialCommunityIcons name="store" size={24} color="#fff" />
             </View>
-            <View style={{
-              flex: 1,
-            }}>
-              <Text style={{
-                fontSize: 14,
-                color: "rgba(255,255,255,0.8)",
-                marginBottom: 4,
-              }}>{getGreeting()}</Text>
-              <Text style={{
-                fontSize: 18,
-                fontWeight: "600",
-                color: "#fff",
-              }}>
+            <View style={styles.userInfo}>
+              <Text style={styles.greeting}>{getGreeting()}</Text>
+              <Text style={styles.businessName}>
                 {merchantData?.business_name || "Your Business"}
               </Text>
             </View>
           </View>
-          <TouchableOpacity style={{
-            position: "relative",
-            padding: 8,
-           
-          }}>
+          <TouchableOpacity style={styles.notificationButton}>
             <Ionicons name="notifications-outline" size={24} color="#fff" />
-            <View style={{
-              position: "absolute",
-              top: 8,
-              right: 8,
-              width: 8,
-              height: 8,
-              borderRadius: 4,
-              backgroundColor: "#FF6B35",
-            }} />
+            {!notificationPermission && (
+              <View style={styles.notificationDot} />
+            )}
           </TouchableOpacity>
         </View>
 
-        {/* Wallet Section */}
-        <View style={{
-          marginTop: 10,
-        }}>
-          <View style={{
-            backgroundColor: "#fff",
-            borderRadius: 16,
-            padding: 20,
-            shadowColor: "#000",
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.1,
-            shadowRadius: 8,
-            elevation: 4,
-          }}>
-            <View style={{
-              flexDirection: "row",
-              alignItems: "center",
-              marginBottom: 8,
-            }}>
-              <Text style={{
-                fontSize: 14,
-                color: "#666",
-                fontWeight: "500",
-                flex: 1,
-              }}>Business Wallet</Text>
-              <TouchableOpacity style={{
-                padding: 4,
-              }}>
-                <Ionicons
-                  name="information-circle-outline"
-                  size={16}
-                  color="#666"
-                />
+        {/* Enhanced Wallet Section */}
+        <View style={styles.walletSection}>
+          <View style={styles.walletCard}>
+            <View style={styles.walletHeader}>
+              <Text style={styles.walletLabel}>Business Wallet</Text>
+              <TouchableOpacity style={styles.walletInfoButton}>
+                <Ionicons name="information-circle-outline" size={16} color="#666" />
               </TouchableOpacity>
             </View>
-            <Text style={{
-              fontSize: 32,
-              fontWeight: "bold",
-              color: "#000",
-              marginBottom: 16,
-            }}>
+            <Text style={styles.walletAmount}>
               {formatCurrency(walletBalance)}
             </Text>
-            {/* <View style={{
-              flexDirection: "row",
-              justifyContent: "space-around",
-            }}>
-              <TouchableOpacity style={{
-                flexDirection: "row",
-                alignItems: "center",
-                paddingVertical: 8,
-                paddingHorizontal: 16,
-                backgroundColor: "#f8f9fa",
-                borderRadius: 20,
-              }}>
-                <MaterialIcons
-                  name="account-balance-wallet"
-                  size={16}
-                  color="#5f259f"
-                />
-                <Text style={{
-                  fontSize: 12,
-                  color: "#5f259f",
-                  fontWeight: "500",
-                  marginLeft: 4,
-                }}>Add Money</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={{
-                flexDirection: "row",
-                alignItems: "center",
-                paddingVertical: 8,
-                paddingHorizontal: 16,
-                backgroundColor: "#f8f9fa",
-                borderRadius: 20,
-              }}>
-                <MaterialIcons name="trending-up" size={16} color="#5f259f" />
-                <Text style={{
-                  fontSize: 12,
-                  color: "#5f259f",
-                  fontWeight: "500",
-                  marginLeft: 4,
-                }}>Withdraw</Text>
-              </TouchableOpacity>
-            </View> */}
+            
+            {/* Cashback Display */}
+            {dashboardData?.transactions?.summary?.cashback && (
+              <View style={styles.cashbackContainer}>
+                <MaterialIcons name="card-giftcard" size={16} color="#00C851" />
+                <Text style={styles.cashbackText}>
+                Total Cashback Distributed  : {formatCurrency(dashboardData.transactions.summary.cashback)}
+                </Text>
+              </View>
+            )}
           </View>
         </View>
       </LinearGradient>
 
-      <ScrollView
-        style={{
-          flex: 1,
-          paddingTop: 20,
-        }}
+      <Animated.ScrollView
+        style={[styles.content, { opacity: fadeAnim }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -571,64 +379,69 @@ export default function MerchantDashboard() {
           />
         }
       >
-        {/* Transaction Overview */}
-        <View style={{
-          marginBottom: 24,
-          paddingHorizontal: 20,
-        }}>
-          <Text style={{
-            fontSize: 18,
-            fontWeight: "600",
-            color: "#1F2937",
-            marginBottom: 16,
-          }}>Today's Transactions</Text>
-          <View style={{
-            flexDirection: "row",
-            gap: 12,
-          }}>
-            <TransactionCard
-              type="Pending"
-              count={transactions.pending.length}
-              amount={transactions.pending.reduce(
-                (sum, t) => sum + parseFloat(t.amount || 0),
-                0
-              )}
-              color="#FF8800"
-              onPress={() => handleViewTransactions("pending")}
-            />
-            <TransactionCard
-              type="Confirmed"
-              count={transactions.confirmed.length}
-              amount={transactions.confirmed.reduce(
-                (sum, t) => sum + parseFloat(t.amount || 0),
-                0
-              )}
-              color="#00C851"
-              onPress={() => handleViewTransactions("confirmed")}
-            />
+        {/* Transaction Summary */}
+        {dashboardData?.transactions && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Transaction Overview</Text>
+            <View style={styles.summaryGrid}>
+              <SummaryCard
+                title="Confirmed"
+                amount={dashboardData.transactions.summary.total_confirmed_amount}
+                count={dashboardData.transactions.counts.confirmed}
+                color="#00C851"
+                icon={<Ionicons name="checkmark-circle" size={20} color="#fff" />}
+                onPress={() => handleViewTransactions("CONFIRMED")}
+              />
+              <SummaryCard
+                title="Pending"
+                amount={dashboardData.transactions.summary.total_pending_amount}
+                count={dashboardData.transactions.counts.pending}
+                color="#FF8800"
+                icon={<Ionicons name="time" size={20} color="#fff" />}
+                onPress={() => handleViewTransactions("pending")}
+              />
+            </View>
+            
+            {/* Total Summary Card */}
+            <View style={styles.totalSummaryCard}>
+              <View style={styles.totalSummaryHeader}>
+                <Text style={styles.totalSummaryTitle}>Total Business Volume</Text>
+                <Text style={styles.totalSummaryAmount}>
+                  {formatCurrency(dashboardData.transactions.summary.total_amount)}
+                </Text>
+              </View>
+              <Text style={styles.totalSummarySubtext}>
+                {dashboardData.transactions.counts.total} total transactions
+              </Text>
+            </View>
           </View>
-        </View>
+        )}
 
         {/* Quick Actions */}
-        <View style={{
-          marginBottom: 24,
-          paddingHorizontal: 20,
-        }}>
-          <Text style={{
-            fontSize: 18,
-            fontWeight: "600",
-            color: "#1F2937",
-            marginBottom: 16,
-          }}>Quick Actions</Text>
-          <View style={{
-            flexDirection: "row",
-            flexWrap: "wrap",
-            gap: 12,
-          }}>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Quick Actions</Text>
+          <View style={styles.quickActionsGrid}>
+
+             <QuickActionCard
+              icon={<Ionicons name="people" size={28} color="#fff" />}
+              title="All Transactions"
+              subtitle="View & Manage"
+              onPress={() => router.push("/merchant-txn")}
+              color="#00C851"
+              notification={dashboardData?.transactions?.counts?.pending || null}
+            />
+
             <QuickActionCard
-              icon={
-                <MaterialCommunityIcons name="qrcode" size={28} color="#fff" />
-              }
+              icon={<MaterialIcons name="analytics" size={28} color="#fff" />}
+              title="Active Offers"
+              subtitle="Manage Offers"
+              onPress={() => router.push("/MyOffersScreen")}
+              color="#3B82F6"
+              notification={dashboardData?.offers?.active ? dashboardData.offers.active : null}
+         
+            />
+            <QuickActionCard
+              icon={<MaterialCommunityIcons name="qrcode" size={28} color="#fff" />}
               title="My QR Code"
               subtitle="Download & Share"
               onPress={handleDownloadQR}
@@ -641,176 +454,62 @@ export default function MerchantDashboard() {
               subtitle="Boost Sales"
               onPress={handleCreateOffer}
               color="#FF6B35"
-            />
-            <QuickActionCard
-              icon={<Ionicons name="people" size={28} color="#fff" />}
-              title="All Transactions"
-              subtitle="View & Manage"
-              onPress={() => router.push("/merchant-txn")}
-              color="#00C851"
+           //   notification={dashboardData?.offers?.active ? dashboardData.offers.active : null}
             />
 
-            <QuickActionCard
-              icon={<MaterialIcons name="analytics" size={28} color="#fff" />}
-              title="Offers"
-              subtitle="Active Offers"
-              onPress={() => router.push("/MyOffersScreen")}
-              color="#3B82F6"
-            />
+         
           </View>
         </View>
 
         {/* Business Management */}
-        <View style={{
-          marginBottom: 24,
-          paddingHorizontal: 20,
-        }}>
-          <Text style={{
-            fontSize: 18,
-            fontWeight: "600",
-            color: "#1F2937",
-            marginBottom: 16,
-          }}>Business Management</Text>
-          <View style={{
-            backgroundColor: "#fff",
-            borderRadius: 12,
-            overflow: "hidden",
-            shadowColor: "#000",
-            shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: 0.1,
-            shadowRadius: 4,
-            elevation: 3,
-          }}>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Business Management</Text>
+          <View style={styles.menuContainer}>
             <TouchableOpacity
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                padding: 16,
-                borderBottomWidth: 1,
-                borderBottomColor: "#f1f3f4",
-              }}
+              style={styles.menuItem}
               onPress={() => router.push("/(merchant)/profile")}
             >
-              <View style={{
-                width: 40,
-                height: 40,
-                borderRadius: 20,
-                backgroundColor: "#f8f9fa",
-                justifyContent: "center",
-                alignItems: "center",
-                marginRight: 12,
-              }}>
+              <View style={styles.menuIconContainer}>
                 <Ionicons name="person-outline" size={20} color="#5f259f" />
               </View>
-              <View style={{
-                flex: 1,
-              }}>
-                <Text style={{
-                  fontSize: 16,
-                  fontWeight: "500",
-                  color: "#1F2937",
-                  marginBottom: 2,
-                }}>Update Profile </Text>
-                <Text style={{
-                  fontSize: 12,
-                  color: "#6B7280",
-                }}>
-                  Update business information
-                </Text>
+              <View style={styles.menuContent}>
+                <Text style={styles.menuTitle}>Update Profile</Text>
+                <Text style={styles.menuSubtitle}>Update business information</Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                padding: 16,
-                borderBottomWidth: 1,
-                borderBottomColor: "#f1f3f4",
-              }}
+              style={styles.menuItem}
               onPress={() => handleViewTransactions("all")}
             >
-              <View style={{
-                width: 40,
-                height: 40,
-                borderRadius: 20,
-                backgroundColor: "#f8f9fa",
-                justifyContent: "center",
-                alignItems: "center",
-                marginRight: 12,
-              }}>
+              <View style={styles.menuIconContainer}>
                 <MaterialIcons name="receipt" size={20} color="#5f259f" />
               </View>
-              <View style={{
-                flex: 1,
-              }}>
-                <Text style={{
-                  fontSize: 16,
-                  fontWeight: "500",
-                  color: "#1F2937",
-                  marginBottom: 2,
-                }}>Transaction History</Text>
-                <Text style={{
-                  fontSize: 12,
-                  color: "#6B7280",
-                }}>
-                  View all payments received
-                </Text>
+              <View style={styles.menuContent}>
+                <Text style={styles.menuTitle}>Transaction History</Text>
+                <Text style={styles.menuSubtitle}>View all payments received</Text>
               </View>
-              <View style={{
-                backgroundColor: "#FF8800",
-                borderRadius: 10,
-                paddingHorizontal: 8,
-                paddingVertical: 2,
-                marginRight: 8,
-              }}>
-                <Text style={{
-                  color: "#fff",
-                  fontSize: 12,
-                  fontWeight: "bold",
-                }}>
-                  {transactions.pending.length + transactions.confirmed.length}
-                </Text>
-              </View>
+              {dashboardData?.transactions?.counts?.total && (
+                <View style={styles.transactionBadge}>
+                  <Text style={styles.transactionBadgeText}>
+                    {dashboardData.transactions.counts.total}
+                  </Text>
+                </View>
+              )}
               <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
             </TouchableOpacity>
 
-            <TouchableOpacity style={{
-              flexDirection: "row",
-              alignItems: "center",
-              padding: 16,
-              borderBottomWidth: 1,
-              borderBottomColor: "#f1f3f4",
-            }}
-            onPress={() => router.push("/HelpSupportScreen")}
+            <TouchableOpacity 
+              style={styles.menuItem}
+              onPress={() => router.push("/HelpSupportScreen")}
             >
-              <View style={{
-                width: 40,
-                height: 40,
-                borderRadius: 20,
-                backgroundColor: "#f8f9fa",
-                justifyContent: "center",
-                alignItems: "center",
-                marginRight: 12,
-              }}>
+              <View style={styles.menuIconContainer}>
                 <MaterialIcons name="help-outline" size={20} color="#5f259f" />
               </View>
-              <View style={{
-                flex: 1,
-              }}>
-                <Text style={{
-                  fontSize: 16,
-                  fontWeight: "500",
-                  color: "#1F2937",
-                  marginBottom: 2,
-                }}>Help & Support</Text>
-                <Text style={{
-                  fontSize: 12,
-                  color: "#6B7280",
-                }}>
-                  Get assistance for your business
-                </Text>
+              <View style={styles.menuContent}>
+                <Text style={styles.menuTitle}>Help & Support</Text>
+                <Text style={styles.menuSubtitle}>Get assistance for your business</Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
             </TouchableOpacity>
@@ -819,76 +518,43 @@ export default function MerchantDashboard() {
 
         {/* Account Info */}
         {merchantData && (
-          <View style={{
-            marginBottom: 24,
-            paddingHorizontal: 20,
-          }}>
-            <View style={{
-              backgroundColor: "#fff",
-              borderRadius: 12,
-              padding: 20,
-              shadowColor: "#000",
-              shadowOffset: { width: 0, height: 2 },
-              shadowOpacity: 0.1,
-              shadowRadius: 4,
-              elevation: 3,
-            }}>
-              <View style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: 16,
-              }}>
-                <Text style={{
-                  fontSize: 16,
-                  fontWeight: "600",
-                  color: "#1F2937",
-                }}>Account Information</Text>
+          <View style={styles.section}>
+            <View style={styles.accountCard}>
+              <View style={styles.accountHeader}>
+                <Text style={styles.accountTitle}>Account Information</Text>
                 <TouchableOpacity onPress={handleLogout}>
-                  <Text style={{
-                    color: "#EF4444",
-                    fontWeight: "600",
-                  }}>Logout</Text>
+                  <Text style={styles.logoutText}>Logout</Text>
                 </TouchableOpacity>
               </View>
-              <View style={{
-                gap: 8,
-              }}>
-                {/* <Text style={{
-                  fontSize: 14,
-                  color: "#374151",
-                }}>
-                  <Text style={{
-                    fontWeight: "500",
-                    color: "#6B7280",
-                  }}>Merchant ID: </Text>
-                  {merchantData.id}
-                </Text> */}
-                <Text style={{
-                  fontSize: 14,
-                  color: "#374151",
-                }}>
-                  <Text style={{
-                    fontWeight: "500",
-                    color: "#6B7280",
-                  }}>Mobile: </Text>
+              <View style={styles.accountDetails}>
+                <Text style={styles.accountDetail}>
+                  <Text style={styles.accountLabel}>Mobile: </Text>
                   {merchantData.mobile}
                 </Text>
-                <Text style={{
-                  fontSize: 14,
-                  color: "#374151",
-                }}>
-                  <Text style={{
-                    fontWeight: "500",
-                    color: "#6B7280",
-                  }}>Status: </Text>
+                <Text style={styles.accountDetail}>
+                  <Text style={styles.accountLabel}>Status: </Text>
                   <Text
-                    style={{
-                      fontWeight: "600",
-                      color: merchantData.status === "ACTIVE" ? "#00C851" : "#FF8800",
-                    }}
+                    style={[
+                      styles.statusText,
+                      {
+                        color: merchantData.status === "ACTIVE" ? "#00C851" : "#FF8800",
+                      }
+                    ]}
                   >
                     {merchantData.status}
+                  </Text>
+                </Text>
+                <Text style={styles.accountDetail}>
+                  <Text style={styles.accountLabel}>Notifications: </Text>
+                  <Text
+                    style={[
+                      styles.statusText,
+                      {
+                        color: notificationPermission ? "#00C851" : "#FF8800",
+                      }
+                    ]}
+                  >
+                    {notificationPermission ? "Enabled" : "Disabled"}
                   </Text>
                 </Text>
               </View>
@@ -896,8 +562,8 @@ export default function MerchantDashboard() {
           </View>
         )}
 
-        <View style={{ height: 20 }} />
-      </ScrollView>
+        <View style={styles.bottomPadding} />
+      </Animated.ScrollView>
     </View>
   );
 }
@@ -922,6 +588,9 @@ const styles = StyleSheet.create({
     paddingTop: 50,
     paddingBottom: 20,
     paddingHorizontal: 20,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    shadowColor: "#000",
   },
   headerContent: {
     flexDirection: "row",
@@ -932,6 +601,7 @@ const styles = StyleSheet.create({
   userSection: {
     flexDirection: "row",
     alignItems: "center",
+    flex: 1,
   },
   avatar: {
     width: 48,
@@ -999,23 +669,20 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: "bold",
     color: "#000",
-    marginBottom: 16,
+    marginBottom: 8,
   },
-  walletActions: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-  },
-  walletAction: {
+  cashbackContainer: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    backgroundColor: "#f8f9fa",
+    backgroundColor: "#f0f9f0",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 20,
+    alignSelf: "flex-start",
   },
-  walletActionText: {
+  cashbackText: {
     fontSize: 12,
-    color: "#5f259f",
+    color: "#00C851",
     fontWeight: "500",
     marginLeft: 4,
   },
@@ -1033,46 +700,83 @@ const styles = StyleSheet.create({
     color: "#1F2937",
     marginBottom: 16,
   },
-  transactionGrid: {
+  summaryGrid: {
     flexDirection: "row",
-    gap: 12,
+    gap: 6,
+    marginBottom: 16,
   },
-  transactionCard: {
+  summaryCard: {
     flex: 1,
     backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: 10,
+    padding: 8,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
   },
-  transactionHeader: {
+  summaryHeader: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 8,
   },
-  transactionDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 8,
+  summaryIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
   },
-  transactionType: {
+  summaryContent: {
+    flex: 1,
+  },
+  summaryTitle: {
     fontSize: 14,
     fontWeight: "500",
     color: "#374151",
-    flex: 1,
-  },
-  transactionCount: {
-    fontSize: 12,
-    color: "#6B7280",
     marginBottom: 4,
   },
-  transactionAmount: {
-    fontSize: 16,
+  summaryAmount: {
+    fontSize: 15,
     fontWeight: "bold",
+    marginBottom: 2,
+  },
+  summaryCount: {
+    fontSize: 12,
+    color: "#6B7280",
+  },
+  totalSummaryCard: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    borderLeftWidth: 4,
+    borderLeftColor: "#5f259f",
+  },
+  totalSummaryHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  totalSummaryTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1F2937",
+  },
+  totalSummaryAmount: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#5f259f",
+  },
+  totalSummarySubtext: {
+    fontSize: 14,
+    color: "#6B7280",
   },
   quickActionsGrid: {
     flexDirection: "row",

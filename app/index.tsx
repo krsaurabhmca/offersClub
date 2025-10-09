@@ -251,6 +251,7 @@ export default function LoginScreen() {
               </View>
 
               {/* Referral Code Section */}
+              {loginType === 'customer' && (
               <TouchableOpacity 
                 style={styles.referralButton}
                 onPress={() => setShowReferral(!showReferral)}
@@ -265,9 +266,10 @@ export default function LoginScreen() {
                   </Text>
                 </View>
                 <View style={styles.referralBadge}>
-                  <Text style={styles.referralBadgeText}>For New Users</Text>
+                  <Text style={styles.referralBadgeText}>New Users</Text>
                 </View>
               </TouchableOpacity>
+              )}
 
               {/* Referral Code Input */}
               {showReferral && (
@@ -664,7 +666,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#F3E5F5',
     borderRadius: 14,
-    padding: 16,
+    padding: 10,
     marginBottom: 20,
     borderWidth: 2,
     borderColor: '#E1BEE7',

@@ -100,8 +100,16 @@ export default function OTPScreen() {
             await AsyncStorage.setItem('mobile', mobile);
             await AsyncStorage.setItem('loginType', 'merchant');
             
-            // Navigate to merchant dashboard
-            router.replace('/(merchant)/dashboard');
+            // Navigate based on URL from response
+            if (response.data.url === 'dashboard') {
+              router.replace('/(merchant)/dashboard');
+            } else if (response.data.url === 'profile') {
+              router.replace('/merchant_profile');
+            } else {
+              // Default to dashboard for customer
+              router.replace('/(merchant)/dashboard');
+            }
+
           } else {
             Alert.alert('Error', 'Invalid merchant response data');
           }
@@ -116,7 +124,7 @@ export default function OTPScreen() {
             if (response.data.url === 'dashboard') {
               router.replace('/(customer)/dashboard');
             } else if (response.data.url === 'profile') {
-              router.replace('/(customer)/profile');
+              router.replace('/customer_profile');
             } else {
               // Default to dashboard for customer
               router.replace('/(customer)/dashboard');

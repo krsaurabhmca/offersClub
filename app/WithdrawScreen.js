@@ -353,7 +353,7 @@ const WithdrawScreen = ({ navigation }) => {
                   style={styles.modalButton}
                   onPress={() => {
                     setSuccessModal(false);
-                    router.back();
+                    router.push('/WalletHistory');
                   }}
                 >
                   <Text style={styles.modalButtonText}>Done</Text>

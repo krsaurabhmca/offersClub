@@ -5,14 +5,14 @@ import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import { useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Dimensions,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    Vibration,
-    View,
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  Vibration,
+  View,
 } from "react-native";
 const { width } = Dimensions.get("window");
 
@@ -68,7 +68,7 @@ const updateMerchantQR = async (upiId: string) => {
 
     const response = await axios.post(
       "https://offersclub.offerplant.com/opex/api.php?task=update_merchant_profile",
-      { qr_code: upiId, id: merchantId }
+      { upi: upiId, id: merchantId }
     );
     console.log("Update QR Response:", response.data);
     if (response.data?.status === "success") {

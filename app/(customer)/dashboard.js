@@ -732,6 +732,27 @@ export default function DashboardScreen() {
               <Ionicons name="chevron-forward" size={20} color="#ccc" />
             </TouchableOpacity>
 
+
+             <TouchableOpacity
+              style={styles.businessService}
+              onPress={() => router.push("/WalletHistory")}
+            >
+              <View style={styles.businessServiceIcon}>
+                <MaterialCommunityIcons
+                  name="wallet"
+                  size={24}
+                  color="#5f259f"
+                />
+              </View>
+              <View style={styles.businessServiceContent}>
+                <Text style={styles.businessServiceTitle}>Wallet History</Text>
+                <Text style={styles.businessServiceSubtitle}>
+                  View your wallet transaction history
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#ccc" />
+            </TouchableOpacity>
+
             <TouchableOpacity
               style={styles.businessService}
               onPress={() => router.push("/nearby-merchants")}

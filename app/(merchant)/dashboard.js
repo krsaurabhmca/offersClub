@@ -4,6 +4,7 @@ import {
   MaterialIcons,
 } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useFocusEffect } from "@react-navigation/native"; // Import useFocusEffect
 import axios from "axios";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
@@ -19,9 +20,9 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  View
+  View,
 } from "react-native";
-import { OneSignal } from 'react-native-onesignal';
+import { OneSignal } from "react-native-onesignal";
 
 const { width } = Dimensions.get("window");
 
@@ -34,16 +35,55 @@ export default function MerchantDashboard() {
   const [notificationPermission, setNotificationPermission] = useState(false);
   const fadeAnim = new Animated.Value(1);
 
+  // Function to load all data
+  const loadAllData = useCallback(async (showLoading = false) => {
+    if (showLoading) setLoading(true);
+    try {
+      await Promise.all([loadMerchantData(), loadDashboardData()]);
+    } catch (error) {
+      console.error("Error loading data:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Initial load on mount
   useEffect(() => {
-    loadMerchantData();
-    loadDashboardData();
     setupOneSignal();
+    loadAllData(true);
+
     Animated.timing(fadeAnim, {
-      toValue: 1, 
+      toValue: 1,
       duration: 800,
       useNativeDriver: true,
     }).start();
   }, []);
+
+  // Auto-update when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      // Don't show loading indicator on focus to avoid flickering
+      loadAllData(false);
+
+      // Subtle animation to indicate refresh
+      Animated.sequence([
+        Animated.timing(fadeAnim, {
+          toValue: 0.7,
+          duration: 100,
+          useNativeDriver: true,
+        }),
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]).start();
+
+      return () => {
+        // Clean up any subscriptions or timers if needed
+      };
+    }, [loadAllData])
+  );
 
   /**
    * Setup OneSignal push notifications
@@ -72,16 +112,16 @@ export default function MerchantDashboard() {
       OneSignal.Notifications.addEventListener("click", (event) => {
         console.log("Notification clicked:", event);
         const data = event.notification.additionalData;
-        
+
         // Handle navigation based on notification type
-        if (data?.type === 'transaction') {
-          router.push('/merchant-txn');
-        } else if (data?.type === 'offer') {
-          router.push('/MyOffersScreen');
+        if (data?.type === "transaction") {
+          router.push("/merchant-txn");
+        } else if (data?.type === "offer") {
+          router.push("/MyOffersScreen");
         }
       });
 
-      console.log('OneSignal setup completed');
+      console.log("OneSignal setup completed");
     } catch (error) {
       console.error("OneSignal setup error:", error);
     }
@@ -94,27 +134,27 @@ export default function MerchantDashboard() {
     try {
       // Login user with OneSignal
       await OneSignal.login(userId.toString());
-      
+
       // Set user tags for segmentation
       await OneSignal.User.addTags({
-        userType: 'merchant',
+        userType: "merchant",
         merchant_id: userId.toString(),
-        business_name: merchantData.business_name || '',
-        wallet: merchantData.wallet || '0',
-        status: merchantData.status || 'ACTIVE'
+        business_name: merchantData.business_name || "",
+        wallet: merchantData.wallet || "0",
+        status: merchantData.status || "ACTIVE",
       });
-      
-      console.log('User linked with OneSignal:', userId);
-      
+
+      console.log("User linked with OneSignal:", userId);
+
       // Get push subscription ID and update on server
       const pushSubscription = OneSignal.User.pushSubscription;
       const deviceId = await pushSubscription.getIdAsync();
-      
+
       if (deviceId) {
         await updateDeviceIdOnServer(userId, deviceId);
       }
     } catch (error) {
-      console.error('Error linking user with OneSignal:', error);
+      console.error("Error linking user with OneSignal:", error);
     }
   };
 
@@ -124,16 +164,16 @@ export default function MerchantDashboard() {
   const updateDeviceIdOnServer = async (userId, deviceId) => {
     try {
       await axios.post(
-        'https://offersclub.offerplant.com/opex/api.php?task=update_merchant_profile',
-        { 
+        "https://offersclub.offerplant.com/opex/api.php?task=update_merchant_profile",
+        {
           id: parseInt(userId),
-          fcm_token: deviceId
+          fcm_token: deviceId,
         }
       );
-      
-      console.log('Device ID updated on server for user:', userId);
+
+      console.log("Device ID updated on server for user:", userId);
     } catch (error) {
-      console.error('Error updating device ID on server:', error);
+      console.error("Error updating device ID on server:", error);
     }
   };
 
@@ -153,13 +193,16 @@ export default function MerchantDashboard() {
       if (response.data && response.data.id) {
         setMerchantData(response.data);
         setWalletBalance(parseFloat(response.data.wallet || 0));
-        
+
         // Link user with OneSignal after profile is loaded
         await linkUserWithOneSignal(response.data.id, response.data);
       }
     } catch (error) {
       console.error("Error loading merchant data:", error);
-      Alert.alert("Error", "Failed to load merchant data");
+      // Don't show alert on auto-refresh to avoid annoying the user
+      if (loading) {
+        Alert.alert("Error", "Failed to load merchant data");
+      }
     }
   };
 
@@ -181,16 +224,14 @@ export default function MerchantDashboard() {
       }
     } catch (error) {
       console.error("Error loading dashboard data:", error);
-    } finally {
-      setLoading(false);
     }
   };
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([loadMerchantData(), loadDashboardData()]);
+    await loadAllData(false);
     setRefreshing(false);
-  }, []);
+  }, [loadAllData]);
 
   const handleDownloadQR = () => {
     router.push("/QRCodeScreen");
@@ -209,8 +250,8 @@ export default function MerchantDashboard() {
     }
   };
 
-  const handleCreateOffer = () => {
-    router.push("/CreateOfferScreen");
+  const MerchantReport = () => {
+    router.push("/MerchantReport");
   };
 
   const handleViewTransactions = (type) => {
@@ -218,6 +259,10 @@ export default function MerchantDashboard() {
       pathname: "/merchant-txn",
       params: { filter: type },
     });
+  };
+
+  const handleAddCoins = () => {
+    router.push("/merchant-wallet-add");
   };
 
   const handleLogout = async () => {
@@ -233,7 +278,7 @@ export default function MerchantDashboard() {
           } catch (error) {
             console.error("OneSignal logout error:", error);
           }
-          
+
           await AsyncStorage.clear();
           router.replace("/");
         },
@@ -241,9 +286,9 @@ export default function MerchantDashboard() {
     ]);
   };
 
-  const formatCurrency = (amount) => {
+  const formatCurrency = (amount, useSymbol = true) => {
     return new Intl.NumberFormat("en-IN", {
-      style: "currency",
+      style: useSymbol ? "currency" : "decimal",
       currency: "INR",
       maximumFractionDigits: 0,
     }).format(amount || 0);
@@ -298,7 +343,7 @@ export default function MerchantDashboard() {
             {formatCurrency(amount)}
           </Text>
           <Text style={styles.summaryCount}>
-            {count} transaction{count !== 1 ? 's' : ''}
+            {count} transaction{count !== 1 ? "s" : ""}
           </Text>
         </View>
         <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
@@ -336,31 +381,47 @@ export default function MerchantDashboard() {
           </View>
           <TouchableOpacity style={styles.notificationButton}>
             <Ionicons name="notifications-outline" size={24} color="#fff" />
-            {!notificationPermission && (
-              <View style={styles.notificationDot} />
-            )}
+            {!notificationPermission && <View style={styles.notificationDot} />}
           </TouchableOpacity>
         </View>
 
-        {/* Enhanced Wallet Section */}
+        {/* Enhanced OffersCoins Section */}
         <View style={styles.walletSection}>
           <View style={styles.walletCard}>
             <View style={styles.walletHeader}>
-              <Text style={styles.walletLabel}>Business Wallet</Text>
+              <Text style={styles.walletLabel}>OffersCoins Balance</Text>
               <TouchableOpacity style={styles.walletInfoButton}>
-                <Ionicons name="information-circle-outline" size={16} color="#666" />
+                <Ionicons
+                  name="information-circle-outline"
+                  size={16}
+                  color="#666"
+                />
               </TouchableOpacity>
             </View>
-            <Text style={styles.walletAmount}>
-              {formatCurrency(walletBalance)}
-            </Text>
-            
+            <View style={styles.coinBalanceRow}>
+              <Text style={styles.walletAmount}>
+                {formatCurrency(walletBalance, false)}
+              </Text>
+              <TouchableOpacity
+                style={styles.addCoinsButton}
+                onPress={handleAddCoins}
+              >
+                <Ionicons name="add-circle" size={18} color="#fff" />
+                <Text style={styles.addCoinsText}>ADD COINS</Text>
+              </TouchableOpacity>
+            </View>
+
             {/* Cashback Display */}
             {dashboardData?.transactions?.summary?.cashback && (
               <View style={styles.cashbackContainer}>
                 <MaterialIcons name="card-giftcard" size={16} color="#00C851" />
                 <Text style={styles.cashbackText}>
-                Total Cashback Distributed  : {formatCurrency(dashboardData.transactions.summary.cashback)}
+                  Total Cashback Distributed:{" "}
+                  {formatCurrency(
+                    dashboardData.transactions.summary.cashback,
+                    false
+                  )}{" "}
+                  Coins
                 </Text>
               </View>
             )}
@@ -386,10 +447,14 @@ export default function MerchantDashboard() {
             <View style={styles.summaryGrid}>
               <SummaryCard
                 title="Confirmed"
-                amount={dashboardData.transactions.summary.total_confirmed_amount}
+                amount={
+                  dashboardData.transactions.summary.total_confirmed_amount
+                }
                 count={dashboardData.transactions.counts.confirmed}
                 color="#00C851"
-                icon={<Ionicons name="checkmark-circle" size={20} color="#fff" />}
+                icon={
+                  <Ionicons name="checkmark-circle" size={20} color="#fff" />
+                }
                 onPress={() => handleViewTransactions("CONFIRMED")}
               />
               <SummaryCard
@@ -401,13 +466,17 @@ export default function MerchantDashboard() {
                 onPress={() => handleViewTransactions("pending")}
               />
             </View>
-            
+
             {/* Total Summary Card */}
             <View style={styles.totalSummaryCard}>
               <View style={styles.totalSummaryHeader}>
-                <Text style={styles.totalSummaryTitle}>Total Business Volume</Text>
+                <Text style={styles.totalSummaryTitle}>
+                  Total Business Volume
+                </Text>
                 <Text style={styles.totalSummaryAmount}>
-                  {formatCurrency(dashboardData.transactions.summary.total_amount)}
+                  {formatCurrency(
+                    dashboardData.transactions.summary.total_amount
+                  )}
                 </Text>
               </View>
               <Text style={styles.totalSummarySubtext}>
@@ -421,14 +490,30 @@ export default function MerchantDashboard() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Quick Actions</Text>
           <View style={styles.quickActionsGrid}>
+            <QuickActionCard
+              icon={<MaterialIcons name="add-circle" size={28} color="#fff" />}
+              title="Add OffersCoins"
+              subtitle="Increase Balance"
+              onPress={handleAddCoins}
+              color="#FF8800"
+            />
 
-             <QuickActionCard
-              icon={<Ionicons name="people" size={28} color="#fff" />}
-              title="All Transactions"
-              subtitle="View & Manage"
-              onPress={() => router.push("/merchant-txn")}
-              color="#00C851"
-              notification={dashboardData?.transactions?.counts?.pending || null}
+            <QuickActionCard
+              icon={<MaterialIcons name="bar-chart" size={28} color="#fff" />} // Better icon for analysis
+              title="Business Analysis"
+              subtitle="Track & Improve"
+              onPress={MerchantReport} // new handler if needed
+              color="#6C63FF" // professional purple tone for analytics
+            />
+
+            <QuickActionCard
+              icon={
+                <MaterialCommunityIcons name="qrcode" size={28} color="#fff" />
+              }
+              title="My QR Code"
+              subtitle="Download & Share"
+              onPress={handleDownloadQR}
+              color="#5f259f"
             />
 
             <QuickActionCard
@@ -437,27 +522,12 @@ export default function MerchantDashboard() {
               subtitle="Manage Offers"
               onPress={() => router.push("/MyOffersScreen")}
               color="#3B82F6"
-              notification={dashboardData?.offers?.active ? dashboardData.offers.active : null}
-         
+              notification={
+                dashboardData?.offers?.active
+                  ? dashboardData.offers.active
+                  : null
+              }
             />
-            <QuickActionCard
-              icon={<MaterialCommunityIcons name="qrcode" size={28} color="#fff" />}
-              title="My QR Code"
-              subtitle="Download & Share"
-              onPress={handleDownloadQR}
-              color="#5f259f"
-            />
-
-            <QuickActionCard
-              icon={<MaterialIcons name="local-offer" size={28} color="#fff" />}
-              title="Create Offer"
-              subtitle="Boost Sales"
-              onPress={handleCreateOffer}
-              color="#FF6B35"
-           //   notification={dashboardData?.offers?.active ? dashboardData.offers.active : null}
-            />
-
-         
           </View>
         </View>
 
@@ -474,7 +544,25 @@ export default function MerchantDashboard() {
               </View>
               <View style={styles.menuContent}>
                 <Text style={styles.menuTitle}>Update Profile</Text>
-                <Text style={styles.menuSubtitle}>Update business information</Text>
+                <Text style={styles.menuSubtitle}>
+                  Update business information
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => router.push("/merchant-wallet-add")}
+            >
+              <View style={styles.menuIconContainer}>
+                <Ionicons name="wallet-outline" size={20} color="#5f259f" />
+              </View>
+              <View style={styles.menuContent}>
+                <Text style={styles.menuTitle}>Add OffersCoins</Text>
+                <Text style={styles.menuSubtitle}>
+                  Increase your coin balance
+                </Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
             </TouchableOpacity>
@@ -488,7 +576,9 @@ export default function MerchantDashboard() {
               </View>
               <View style={styles.menuContent}>
                 <Text style={styles.menuTitle}>Transaction History</Text>
-                <Text style={styles.menuSubtitle}>View all payments received</Text>
+                <Text style={styles.menuSubtitle}>
+                  View all payments received
+                </Text>
               </View>
               {dashboardData?.transactions?.counts?.total && (
                 <View style={styles.transactionBadge}>
@@ -500,7 +590,21 @@ export default function MerchantDashboard() {
               <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
             </TouchableOpacity>
 
-            <TouchableOpacity 
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => router.push("/merchant-txn")}
+            >
+              <View style={styles.menuIconContainer}>
+                <Ionicons name="people" size={20} color="#5f259f" />
+              </View>
+              <View style={styles.menuContent}>
+                <Text style={styles.menuTitle}>All Transactions</Text>
+                <Text style={styles.menuSubtitle}>View & manage payments</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
               style={styles.menuItem}
               onPress={() => router.push("/HelpSupportScreen")}
             >
@@ -509,7 +613,9 @@ export default function MerchantDashboard() {
               </View>
               <View style={styles.menuContent}>
                 <Text style={styles.menuTitle}>Help & Support</Text>
-                <Text style={styles.menuSubtitle}>Get assistance for your business</Text>
+                <Text style={styles.menuSubtitle}>
+                  Get assistance for your business
+                </Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
             </TouchableOpacity>
@@ -537,8 +643,11 @@ export default function MerchantDashboard() {
                     style={[
                       styles.statusText,
                       {
-                        color: merchantData.status === "ACTIVE" ? "#00C851" : "#FF8800",
-                      }
+                        color:
+                          merchantData.status === "ACTIVE"
+                            ? "#00C851"
+                            : "#FF8800",
+                      },
                     ]}
                   >
                     {merchantData.status}
@@ -551,7 +660,7 @@ export default function MerchantDashboard() {
                       styles.statusText,
                       {
                         color: notificationPermission ? "#00C851" : "#FF8800",
-                      }
+                      },
                     ]}
                   >
                     {notificationPermission ? "Enabled" : "Disabled"}
@@ -665,11 +774,30 @@ const styles = StyleSheet.create({
   walletInfoButton: {
     padding: 4,
   },
+  coinBalanceRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
   walletAmount: {
     fontSize: 32,
     fontWeight: "bold",
     color: "#000",
-    marginBottom: 8,
+  },
+  addCoinsButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#5f259f",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  addCoinsText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 12,
+    marginLeft: 4,
   },
   cashbackContainer: {
     flexDirection: "row",

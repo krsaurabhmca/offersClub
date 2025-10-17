@@ -247,8 +247,8 @@ const fetchOffers = async (isRefresh = false) => {
             </TouchableOpacity>
             <Text style={styles.headerTitle}>Active Offers</Text>
           </View>
-          <TouchableOpacity style={styles.refreshButton} onPress={onRefresh}>
-            <Ionicons name="refresh-outline" size={20} color="white" />
+          <TouchableOpacity style={styles.refreshButton} onPress={() => router.push('/CreateOfferScreen')}>
+            <Ionicons name="add-outline" size={20} color="white" />
           </TouchableOpacity>
         </View>
         {count > 0 && (
